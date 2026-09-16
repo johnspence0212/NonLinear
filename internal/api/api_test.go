@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/store"
+	"github.com/johnspence0212/NonLinear/internal/version"
 )
 
 func TestIssueLifecycle(t *testing.T) {
@@ -62,6 +63,42 @@ func TestIssueLifecycle(t *testing.T) {
 	if len(issues) != 1 || issues[0].(map[string]any)["id"] != b["id"] {
 		t.Fatalf("after resolve, expected B: %v", front)
 	}
+
+	health := getJSON(t, mux, "/api/health")
+	if health["version"] != version.Version || health["ok"] != true {
+		t.Fatalf("health: %v", health)
+	}
+
+	deleted := deleteJSON(t, mux, "/api/issues/"+itoa(mapIssue["id"]))
+	ids, _ := deleted["deleted"].([]any)
+	if len(ids) != 3 {
+		t.Fatalf("cascade delete: %v", deleted)
+	}
+
+	wipe := postJSON(t, mux, "/api/wipe", map[string]any{"confirm": true})
+	if wipe["deleted"] != float64(0) {
+		t.Fatalf("wipe after delete: %v", wipe)
+	}
+	again := postJSON(t, mux, "/api/issues", map[string]any{"title": "Fresh"})
+	if again["identifier"] != "NL-1" {
+		t.Fatalf("%v", again)
+	}
+}
+
+func TestWipeRequiresConfirm(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+	req := httptest.NewRequest(http.MethodPost, "/api/wipe", bytes.NewReader([]byte(`{"confirm":false}`)))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
 }
 
 func postJSON(t *testing.T, h http.Handler, path string, body any) map[string]any {
@@ -93,6 +130,21 @@ func putJSON(t *testing.T, h http.Handler, path string, body any) map[string]any
 	}
 	var out map[string]any
 	_ = json.Unmarshal(rec.Body.Bytes(), &out)
+	return out
+}
+
+func deleteJSON(t *testing.T, h http.Handler, path string) map[string]any {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodDelete, path, nil)
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("DELETE %s -> %d %s", path, rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
 	return out
 }
 

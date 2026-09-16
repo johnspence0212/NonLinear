@@ -97,6 +97,92 @@ func Open(path string) (*Store, error) {
 
 func (s *Store) Path() string { return s.path }
 
+func (s *Store) Count() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.db.Issues)
+}
+
+type DeleteResult struct {
+	Deleted []int `json:"deleted"`
+}
+
+// Delete removes an issue and every descendant. Remaining issues drop
+// any blocked-by edges that pointed at the removed ids.
+func (s *Store) Delete(id int) (DeleteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.findLocked(id); !ok {
+		return DeleteResult{}, ErrNotFound
+	}
+	drop := map[int]bool{}
+	for _, did := range s.descendantsLocked(id) {
+		drop[did] = true
+	}
+	kept := make([]model.Issue, 0, len(s.db.Issues)-len(drop))
+	deleted := make([]int, 0, len(drop))
+	for _, issue := range s.db.Issues {
+		if drop[issue.ID] {
+			deleted = append(deleted, issue.ID)
+			continue
+		}
+		kept = append(kept, issue)
+	}
+	sort.Ints(deleted)
+	for i := range kept {
+		kept[i].BlockedBy = stripIDs(kept[i].BlockedBy, drop)
+	}
+	s.db.Issues = kept
+	if err := s.saveLocked(); err != nil {
+		return DeleteResult{}, err
+	}
+	return DeleteResult{Deleted: deleted}, nil
+}
+
+// Wipe empties the tracker and resets ids so the next issue is NL-1.
+func (s *Store) Wipe() (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	n := len(s.db.Issues)
+	s.db.Issues = []model.Issue{}
+	s.db.NextID = 1
+	return n, s.saveLocked()
+}
+
+func (s *Store) descendantsLocked(id int) []int {
+	kids := map[int][]int{}
+	for _, issue := range s.db.Issues {
+		if issue.ParentID != nil {
+			kids[*issue.ParentID] = append(kids[*issue.ParentID], issue.ID)
+		}
+	}
+	seen := map[int]bool{}
+	out := []int{}
+	var walk func(int)
+	walk = func(cur int) {
+		if seen[cur] {
+			return
+		}
+		seen[cur] = true
+		out = append(out, cur)
+		for _, child := range kids[cur] {
+			walk(child)
+		}
+	}
+	walk(id)
+	return out
+}
+
+func stripIDs(ids []int, drop map[int]bool) []int {
+	out := []int{}
+	for _, id := range ids {
+		if !drop[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
 func (s *Store) Labels() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()

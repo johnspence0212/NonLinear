@@ -6,6 +6,8 @@ const state = {
   error: "",
   stats: { all: 0, open: 0, closed: 0, maps: 0, frontier: 0, blocked: 0 },
   labels: [],
+  version: "",
+  dataPath: "",
 };
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -18,6 +20,7 @@ function route() {
   if (map) return { name: "map", id: Number(map[1]) };
   const tag = hash.match(/^\/tag\/(.+)$/);
   if (tag) return { name: "tag", label: decodeURIComponent(tag[1]) };
+  if (hash === "/settings") return { name: "settings" };
   const issue = hash.match(/^\/(\d+)$/);
   if (issue) return { name: "issue", id: Number(issue[1]) };
   return { name: "list" };
@@ -126,7 +129,15 @@ function bindCompose(extra) {
 }
 
 async function refreshStats() {
-  const [allData, labelData] = await Promise.all([api("/api/issues"), api("/api/labels")]);
+  const [allData, labelData, health] = await Promise.all([
+    api("/api/issues"),
+    api("/api/labels"),
+    api("/api/health"),
+  ]);
+  state.version = health.version || "";
+  state.dataPath = health.data || "";
+  const ver = $("#version");
+  if (ver) ver.textContent = state.version ? "v" + state.version : "";
   const all = allData.issues || [];
   state.stats = {
     all: all.length,
@@ -255,6 +266,10 @@ async function renderHome() {
 function syncChrome() {
   const r = route();
   document.querySelectorAll("nav button").forEach((b) => {
+    if (b.dataset.go === "settings") {
+      b.classList.toggle("active", r.name === "settings");
+      return;
+    }
     const onMap = r.name === "map" && b.dataset.filter === "maps";
     b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
   });
@@ -283,7 +298,10 @@ async function renderMap(id) {
         <div class="kicker"><a href="#/">← maps</a></div>
         <h1>${esc(map.title)}</h1>
         <div class="body map-body">${esc(map.body) || `<span class="muted">empty map body</span>`}</div>
-        <div class="actions"><button data-act="edit">edit map</button></div>
+        <div class="actions">
+          <button data-act="edit">edit map</button>
+          <button data-act="delete" class="danger">delete map</button>
+        </div>
       </div>`
     )}
     ${box(
@@ -292,7 +310,7 @@ async function renderMap(id) {
       composeBar("new ticket on this map")
     )}`;
   bindCompose({ parentId: map.id });
-  main.querySelector("[data-act=edit]").addEventListener("click", () => act(map, "edit"));
+  main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(map, btn.dataset.act)));
   main.querySelectorAll("[data-map-filter]").forEach((b) => {
     b.addEventListener("click", () => {
       state.mapChildFilter = b.dataset.mapFilter;
@@ -354,6 +372,7 @@ async function renderIssue(id) {
           ${issue.assignee && issue.state === "open" ? `<button data-act="unclaim">unclaim</button>` : ""}
           ${issue.state === "open" ? `<button data-act="close">close</button>` : `<button data-act="reopen">reopen</button>`}
           <button data-act="edit">edit</button>
+          <button data-act="delete" class="danger">delete</button>
         </div>
       </div>`
     )}
@@ -405,6 +424,16 @@ async function act(issue, kind) {
       if (body == null) return;
       await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body }) });
     }
+    if (kind === "delete") {
+      const kids = (issue.children || []).length;
+      const label = isMap(issue) ? "map" : "issue";
+      const extra = kids ? " and all children" : "";
+      if (!confirm(`delete ${label} ${issue.identifier}${extra}?`)) return;
+      await api(`/api/issues/${issue.id}`, { method: "DELETE" });
+      location.hash = isMap(issue) ? "#/" : backHref(issue);
+      await paint();
+      return;
+    }
     await paint();
   } catch (err) {
     state.error = err.message;
@@ -454,6 +483,11 @@ async function paint() {
     renderRail();
     return;
   }
+  if (r.name === "settings") {
+    renderSettings();
+    renderRail();
+    return;
+  }
   if (r.name === "map") {
     await renderMap(r.id);
     return;
@@ -461,7 +495,48 @@ async function paint() {
   await renderIssue(r.id);
 }
 
+function renderSettings() {
+  const s = state.stats;
+  main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+    "<strong>settings</strong>",
+    `<div class="box-b pad">
+      <div class="settings-meta">
+        <div class="rail-line">version <b id="shown-version">${esc(state.version)}</b></div>
+        <div class="rail-line">issues <b>${s.all}</b></div>
+        <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
+      </div>
+      <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
+      <div class="actions">
+        <button type="button" id="wipe" class="danger">wipe database</button>
+      </div>
+    </div>`
+  )}`;
+  const btn = $("#wipe");
+  btn.addEventListener("click", async () => {
+    if (!btn.classList.contains("armed")) {
+      btn.classList.add("armed");
+      btn.textContent = "click again to confirm";
+      return;
+    }
+    try {
+      await api("/api/wipe", { method: "POST", body: JSON.stringify({ confirm: true }) });
+      state.error = "";
+      location.hash = "#/";
+      await paint();
+    } catch (err) {
+      state.error = err.message;
+      renderSettings();
+    }
+  });
+  syncChrome();
+}
+
 document.querySelector("nav").addEventListener("click", (e) => {
+  const settings = e.target.closest("[data-go=settings]");
+  if (settings) {
+    location.hash = "#/settings";
+    return;
+  }
   const b = e.target.closest("[data-filter]");
   if (!b) return;
   state.filter = b.dataset.filter;
@@ -508,7 +583,7 @@ window.addEventListener("keydown", (e) => {
     const input = document.querySelector(".banner input, .compose input");
     if (input) input.focus();
   }
-  if (e.key === "Escape" && (r.name === "map" || r.name === "tag")) location.hash = "#/";
+  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings")) location.hash = "#/";
 });
 
 const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };

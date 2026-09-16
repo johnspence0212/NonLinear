@@ -121,6 +121,80 @@ func TestListFilters(t *testing.T) {
 	}
 }
 
+func TestDeleteCascadesAndCleansBlockers(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	a, err := s.Create(CreateIssue{Title: "A", ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "B", ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	orphan, err := s.Create(CreateIssue{Title: "Orphan"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBlockedBy(orphan.ID, []int{a.ID, b.ID}); err != nil {
+		t.Fatal(err)
+	}
+	grand := a.ID
+	if _, err := s.Create(CreateIssue{Title: "A.1", ParentID: &grand}); err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.Delete(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Deleted) != 4 {
+		t.Fatalf("deleted %v", got.Deleted)
+	}
+	if s.Count() != 1 {
+		t.Fatalf("count %d", s.Count())
+	}
+	left, err := s.Get(orphan.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(left.BlockedBy) != 0 {
+		t.Fatalf("blockedBy should be empty, got %v", left.BlockedBy)
+	}
+}
+
+func TestWipeResetsIDs(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.Create(CreateIssue{Title: "Gone"}); err != nil {
+		t.Fatal(err)
+	}
+	n, err := s.Wipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n != 1 || s.Count() != 0 {
+		t.Fatalf("wipe n=%d count=%d", n, s.Count())
+	}
+	fresh, err := s.Create(CreateIssue{Title: "Again"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fresh.Identifier != "NL-1" {
+		t.Fatalf("identifier %s", fresh.Identifier)
+	}
+}
+
+func TestDeleteMissing(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.Delete(99); err == nil {
+		t.Fatal("expected not found")
+	}
+}
+
 func ids(views []model.IssueView) []int {
 	out := make([]int, len(views))
 	for i, v := range views {

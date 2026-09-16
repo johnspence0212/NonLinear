@@ -16,6 +16,7 @@ import (
 	"github.com/johnspence0212/NonLinear/internal/api"
 	mcpserver "github.com/johnspence0212/NonLinear/internal/mcp"
 	"github.com/johnspence0212/NonLinear/internal/store"
+	"github.com/johnspence0212/NonLinear/internal/version"
 	"github.com/johnspence0212/NonLinear/web"
 )
 
@@ -24,7 +25,13 @@ func main() {
 	dataDir := flag.String("data", envOr("DATA_DIR", "./data"), "directory for db.json")
 	token := flag.String("token", envOr("NL_TOKEN", ""), "optional bearer token for /api and /mcp")
 	openUI := flag.Bool("open", envBool("NL_OPEN"), "open a dedicated Chromium app window")
+	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Parse()
+
+	if *showVersion {
+		fmt.Println(version.Version)
+		return
+	}
 
 	listen := *addr
 	if listen == "" {
@@ -64,9 +71,9 @@ func main() {
 	})
 
 	handler := withCORS(withAuth(*token, mux))
-	fmt.Printf("nonlinear  ui  http://127.0.0.1%s\n", listen)
-	fmt.Printf("nonlinear  mcp http://127.0.0.1%s/mcp\n", listen)
-	fmt.Printf("nonlinear  data %s\n", filepath.Join(*dataDir, "db.json"))
+	fmt.Printf("nonlinear %s  ui  http://127.0.0.1%s\n", version.Version, listen)
+	fmt.Printf("nonlinear %s  mcp http://127.0.0.1%s/mcp\n", version.Version, listen)
+	fmt.Printf("nonlinear %s  data %s\n", version.Version, filepath.Join(*dataDir, "db.json"))
 	if *openUI {
 		openAppWindow("http://127.0.0.1" + listen)
 	}

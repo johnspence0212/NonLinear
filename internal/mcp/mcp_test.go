@@ -55,4 +55,15 @@ func TestMCPCreateAndFrontier(t *testing.T) {
 	if front.IsError {
 		t.Fatalf("%v", front.Content)
 	}
+
+	wiped, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "wipe_db",
+		Arguments: map[string]any{"confirm": true},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wiped.IsError {
+		t.Fatalf("%v", wiped.Content)
+	}
 }

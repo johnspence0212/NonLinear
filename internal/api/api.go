@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/johnspence0212/NonLinear/internal/store"
+	"github.com/johnspence0212/NonLinear/internal/version"
 )
 
 type Handler struct {
@@ -26,10 +27,17 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("PUT /api/issues/{id}/blocked-by", h.blockedBy)
 	mux.HandleFunc("POST /api/issues/{id}/claim", h.claim)
 	mux.HandleFunc("POST /api/issues/{id}/resolve", h.resolve)
+	mux.HandleFunc("DELETE /api/issues/{id}", h.delete)
+	mux.HandleFunc("POST /api/wipe", h.wipe)
 }
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
-	writeJSON(w, http.StatusOK, map[string]any{"ok": true})
+	writeJSON(w, http.StatusOK, map[string]any{
+		"ok":      true,
+		"version": version.Version,
+		"data":    h.Store.Path(),
+		"issues":  h.Store.Count(),
+	})
 }
 
 func (h *Handler) labels(w http.ResponseWriter, r *http.Request) {
@@ -230,6 +238,38 @@ func (h *Handler) resolve(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, issue)
+}
+
+func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.Store.Delete(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) wipe(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Confirm bool `json:"confirm"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	if !body.Confirm {
+		writeError(w, http.StatusBadRequest, "confirm must be true")
+		return
+	}
+	n, err := h.Store.Wipe()
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "version": version.Version})
 }
 
 func pathID(w http.ResponseWriter, r *http.Request) (int, bool) {

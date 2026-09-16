@@ -69,6 +69,7 @@ nav button span { color: var(--muted); }
 nav button:hover { color: var(--fg); background: var(--bg-2); }
 nav button.active { color: var(--accent); background: var(--bg-2); }
 nav button.active span { color: var(--accent); }
+nav [data-go="settings"] { margin-top: auto; }
 
 main {
   min-width: 0;
@@ -174,6 +175,11 @@ h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
   color: var(--muted);
 }
 .actions button:hover { color: var(--fg); }
+.actions button.danger { color: var(--warn); border-color: #6a3a36; }
+.actions button.danger:hover { color: #fff; background: #6a3a36; }
+.actions button.danger.armed { color: #fff; background: var(--warn); border-color: var(--warn); }
+.settings-meta { display: flex; flex-direction: column; gap: 6px; }
+.settings-warn { color: var(--warn); margin: 12px 0 4px; }
 textarea {
   width: 100%;
   min-height: 120px;
@@ -228,6 +234,7 @@ footer .foot-brand { margin-left: auto; color: var(--accent); }
 @media (max-width: 720px) {
   .shell { grid-template-columns: 1fr; }
   nav { flex-direction: row; border-right: 0; border-bottom: 1px solid var(--line); overflow-x: auto; }
+  nav [data-go="settings"] { margin-top: 0; }
 }
 
 @media (display-mode: standalone) {

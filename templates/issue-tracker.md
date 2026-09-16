@@ -43,3 +43,5 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Frontier query**: `list_frontier` with `parentId` equal to the map's `id`. Returns open, unblocked, unassigned children, ordered by id. First result is next. Equivalent: `list_issues` with `parentId`, `state: "open"`, `frontier: true`.
 - **Claim**: `claim_issue` with the ticket `id` (optional `assignee`, default `cursor`). The session's first write. An open unassigned ticket is unclaimed.
 - **Resolve**: `resolve_issue` with `id` and `answer` (posts a resolution comment and closes). Then `update_issue` the map body to append a context pointer under Decisions so far: ticket **title** as the link text, one-line gist of the answer. Do not restate the full decision on the map.
+- **Delete a map**: `delete_issue` with the map `id`. Cascades to every child ticket and strips leftover blocked-by edges.
+- **Wipe the tracker**: `wipe_db` with `confirm: true`. Resets ids so the next issue is NL-1. Irreversible.

@@ -3,14 +3,16 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
 	"github.com/johnspence0212/NonLinear/internal/store"
+	"github.com/johnspence0212/NonLinear/internal/version"
 )
 
 func New(st *store.Store) *mcp.Server {
-	server := mcp.NewServer(&mcp.Implementation{Name: "nonlinear", Version: "0.1.0"}, nil)
+	server := mcp.NewServer(&mcp.Implementation{Name: "nonlinear", Version: version.Version}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_issues",
@@ -143,6 +145,31 @@ func New(st *store.Store) *mcp.Server {
 		return textResult(issue)
 	})
 
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "delete_issue",
+		Description: "Delete an issue and every descendant (map + all child tickets). Remaining issues lose blocked-by edges that pointed at the deleted ids.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.Delete(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "wipe_db",
+		Description: "Erase every issue and reset ids so the next create is NL-1. Requires confirm=true. Irreversible.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in wipeInput) (*mcp.CallToolResult, any, error) {
+		if !in.Confirm {
+			return errResult(fmt.Errorf("%w: confirm must be true", store.ErrInvalid))
+		}
+		n, err := st.Wipe()
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(map[string]any{"ok": true, "deleted": n, "version": version.Version})
+	})
+
 	return server
 }
 
@@ -205,6 +232,10 @@ type resolveInput struct {
 	ID     int    `json:"id" jsonschema:"issue id"`
 	Answer string `json:"answer" jsonschema:"resolution comment body"`
 	Author string `json:"author,omitempty"`
+}
+
+type wipeInput struct {
+	Confirm bool `json:"confirm" jsonschema:"must be true to wipe"`
 }
 
 func optString(s string) *string {
