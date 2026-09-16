@@ -1,5 +1,6 @@
 const state = {
-  filter: localStorage.getItem("nl-filter") || "open",
+  filter: localStorage.getItem("nl-filter") || "maps",
+  mapChildFilter: localStorage.getItem("nl-map-filter") || "open",
   issues: [],
   selected: 0,
   error: "",
@@ -11,9 +12,19 @@ const statusEl = $("#status");
 
 function route() {
   const hash = location.hash.replace(/^#/, "") || "/";
-  const m = hash.match(/^\/(\d+)$/);
-  if (m) return { name: "issue", id: Number(m[1]) };
+  const map = hash.match(/^\/map\/(\d+)$/);
+  if (map) return { name: "map", id: Number(map[1]) };
+  const issue = hash.match(/^\/(\d+)$/);
+  if (issue) return { name: "issue", id: Number(issue[1]) };
   return { name: "list" };
+}
+
+function isMap(issue) {
+  return (issue.labels || []).includes("wayfinder:map");
+}
+
+function hrefFor(issue) {
+  return isMap(issue) ? `#/map/${issue.id}` : `#/${issue.id}`;
 }
 
 async function api(path, opts = {}) {
@@ -46,7 +57,7 @@ function rowHTML(issue, selected) {
     : issue.openBlockers
       ? `blocked×${issue.openBlockers}`
       : "";
-  return `<a class="row ${selected ? "selected" : ""}" href="#/${issue.id}" data-id="${issue.id}">
+  return `<a class="row ${selected ? "selected" : ""}" href="${hrefFor(issue)}" data-id="${issue.id}">
     <span class="id">${issue.identifier}</span>
     <span class="title">${esc(issue.title)}</span>
     <span class="meta">${esc(labels(issue))}</span>
@@ -61,6 +72,12 @@ function esc(s) {
     .replaceAll(">", "&gt;");
 }
 
+function backHref(issue) {
+  if (issue.parent && isMap(issue.parent)) return `#/map/${issue.parent.id}`;
+  if (issue.parent) return `#/${issue.parent.id}`;
+  return "#/";
+}
+
 async function loadList() {
   const q = new URLSearchParams();
   if (state.filter === "open" || state.filter === "closed") q.set("state", state.filter);
@@ -71,16 +88,17 @@ async function loadList() {
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
-function renderList() {
-  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
-  main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
-    ${rows || `<div class="empty">no issues</div>`}
-    <form class="compose" id="compose">
-      <span class="muted">&gt;</span>
-      <input name="title" placeholder="new issue" autocomplete="off" />
-    </form>`;
-  $("#compose").addEventListener("submit", async (e) => {
+async function loadMapChildren(mapId) {
+  const q = new URLSearchParams({ parentId: String(mapId) });
+  if (state.mapChildFilter === "open" || state.mapChildFilter === "closed") q.set("state", state.mapChildFilter);
+  if (state.mapChildFilter === "frontier") q.set("frontier", "1");
+  const data = await api("/api/issues?" + q.toString());
+  state.issues = data.issues || [];
+  if (state.selected >= state.issues.length) state.selected = 0;
+}
+
+function bindCompose(form, extra) {
+  form.addEventListener("submit", async (e) => {
     e.preventDefault();
     const input = e.target.title;
     const title = input.value.trim();
@@ -88,21 +106,83 @@ function renderList() {
     try {
       const created = await api("/api/issues", {
         method: "POST",
-        body: JSON.stringify({ title }),
+        body: JSON.stringify({ title, ...extra }),
       });
-      location.hash = "#/" + created.id;
+      location.hash = hrefFor(created);
     } catch (err) {
       state.error = err.message;
-      renderList();
+      paint();
     }
   });
-  $$nav();
 }
 
-function $$nav() {
+function renderList() {
+  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+  const hint = state.filter === "maps" ? "new map" : "new issue";
+  main.innerHTML = `
+    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${rows || `<div class="empty">no issues</div>`}
+    <form class="compose" id="compose">
+      <span class="muted">&gt;</span>
+      <input name="title" placeholder="${hint}" autocomplete="off" />
+    </form>`;
+  const extra = state.filter === "maps" ? { labels: ["wayfinder:map"] } : {};
+  bindCompose($("#compose"), extra);
+  syncNav();
+}
+
+function syncNav() {
+  const r = route();
   document.querySelectorAll("nav button").forEach((b) => {
-    b.classList.toggle("active", b.dataset.filter === state.filter);
+    const onMap = r.name === "map" && b.dataset.filter === "maps";
+    b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
   });
+}
+
+async function renderMap(id) {
+  let map;
+  try {
+    map = await api("/api/issues/" + id);
+    await loadMapChildren(id);
+    state.error = "";
+  } catch (err) {
+    main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    return;
+  }
+  const filters = ["open", "frontier", "closed", "all"]
+    .map(
+      (f) =>
+        `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`
+    )
+    .join("");
+  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+  statusEl.textContent = `map ${map.identifier}`;
+  main.innerHTML = `
+    <div class="map-head">
+      ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+      <div class="kicker"><a href="#/">← maps</a>  ${esc(map.identifier)}  ${map.state}  <a class="muted" href="#/${map.id}">issue</a></div>
+      <h1>${esc(map.title)}</h1>
+      <div class="body map-body">${esc(map.body) || `<span class="muted">empty map body</span>`}</div>
+      <div class="actions">
+        <button data-act="edit">edit map</button>
+      </div>
+      <div class="subnav">${filters}</div>
+    </div>
+    ${rows || `<div class="empty">no tickets on this map</div>`}
+    <form class="compose" id="compose">
+      <span class="muted">&gt;</span>
+      <input name="title" placeholder="new ticket on this map" autocomplete="off" />
+    </form>`;
+  bindCompose($("#compose"), { parentId: map.id });
+  main.querySelector("[data-act=edit]").addEventListener("click", () => act(map, "edit"));
+  main.querySelectorAll("[data-map-filter]").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.mapChildFilter = b.dataset.mapFilter;
+      localStorage.setItem("nl-map-filter", state.mapChildFilter);
+      paint();
+    });
+  });
+  syncNav();
 }
 
 async function renderIssue(id) {
@@ -114,18 +194,11 @@ async function renderIssue(id) {
     main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
     return;
   }
+  if (isMap(issue)) {
+    location.replace(`#/map/${issue.id}`);
+    return;
+  }
   const m = mark(issue);
-  const tree = (issue.children || [])
-    .map((c) => {
-      const cm = mark(c);
-      return `<a class="row" href="#/${c.id}">
-        <span class="indent">-</span>
-        <span class="id">${c.identifier}</span>
-        <span class="title">${esc(c.title)}</span>
-        <span class="mark ${cm.cls}">${cm.ch} ${c.assignee ? "@" + esc(c.assignee) : c.blocked ? "blocked" : ""}</span>
-      </a>`;
-    })
-    .join("");
   const comments = (issue.comments || [])
     .map(
       (c) => `<div class="comment">
@@ -135,16 +208,16 @@ async function renderIssue(id) {
     )
     .join("");
   const parent = issue.parent
-    ? `<a href="#/${issue.parent.id}">${esc(issue.parent.identifier)} ${esc(issue.parent.title)}</a>`
+    ? `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.identifier)} ${esc(issue.parent.title)}</a>`
     : "—";
   const blockers = (issue.blockers || [])
-    .map((b) => `<a href="#/${b.id}">${esc(b.identifier)}</a>`)
+    .map((b) => `<a href="${hrefFor(b)}">${esc(b.identifier)}</a>`)
     .join(" ") || "—";
   statusEl.textContent = `${issue.identifier} ${issue.state}`;
   main.innerHTML = `
     <article class="issue">
       ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
-      <div class="kicker"><a href="#/">←</a>  ${esc(issue.identifier)}  <span class="mark ${m.cls}">${m.ch}</span>  ${issue.state}${issue.assignee ? "  @" + esc(issue.assignee) : ""}</div>
+      <div class="kicker"><a href="${backHref(issue)}">←</a>  ${esc(issue.identifier)}  <span class="mark ${m.cls}">${m.ch}</span>  ${issue.state}${issue.assignee ? "  @" + esc(issue.assignee) : ""}</div>
       <h1>${esc(issue.title)}</h1>
       <div class="chips">
         ${(issue.labels || []).map((l) => `<span class="chip">${esc(l)}</span>`).join("") || `<span class="muted">no labels</span>`}
@@ -161,7 +234,6 @@ async function renderIssue(id) {
         ${issue.state === "open" ? `<button data-act="close">close</button>` : `<button data-act="reopen">reopen</button>`}
         <button data-act="edit">edit</button>
       </div>
-      ${tree ? `<section class="tree"><h2>children / frontier</h2>${tree}</section>` : ""}
       <section class="comments">
         <h2>comments</h2>
         ${comments || `<div class="muted">none</div>`}
@@ -191,6 +263,7 @@ async function renderIssue(id) {
       $("#comment").requestSubmit();
     }
   });
+  syncNav();
 }
 
 async function act(issue, kind) {
@@ -206,28 +279,29 @@ async function act(issue, kind) {
       if (body == null) return;
       await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body }) });
     }
-    await renderIssue(issue.id);
+    await paint();
   } catch (err) {
     state.error = err.message;
-    await renderIssue(issue.id);
+    await paint();
   }
 }
 
 async function paint() {
-  state.error = "";
   const r = route();
-  document.querySelectorAll("nav button").forEach((b) => {
-    b.classList.toggle("active", b.dataset.filter === state.filter);
-  });
   if (r.name === "list") {
     statusEl.textContent = state.filter;
     try {
       await loadList();
+      state.error = "";
     } catch (err) {
       state.error = err.message;
       state.issues = [];
     }
     renderList();
+    return;
+  }
+  if (r.name === "map") {
+    await renderMap(r.id);
     return;
   }
   await renderIssue(r.id);
@@ -242,30 +316,37 @@ document.querySelectorAll("nav button").forEach((b) => {
   });
 });
 
+function highlightSelected() {
+  document.querySelectorAll("main .row").forEach((el, i) => {
+    el.classList.toggle("selected", i === state.selected);
+  });
+}
+
 window.addEventListener("hashchange", paint);
 window.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea")) return;
   const r = route();
-  if (r.name !== "list") {
-    if (e.key === "Escape") location.hash = "#/";
+  if (r.name === "issue") {
+    if (e.key === "Escape") history.back();
     return;
   }
   if (e.key === "j") {
     state.selected = Math.min(state.issues.length - 1, state.selected + 1);
-    renderList();
+    highlightSelected();
   }
   if (e.key === "k") {
     state.selected = Math.max(0, state.selected - 1);
-    renderList();
+    highlightSelected();
   }
   if (e.key === "Enter" && state.issues[state.selected]) {
-    location.hash = "#/" + state.issues[state.selected].id;
+    location.hash = hrefFor(state.issues[state.selected]);
   }
   if (e.key === "/") {
     e.preventDefault();
     const input = document.querySelector(".compose input");
     if (input) input.focus();
   }
+  if (e.key === "Escape" && r.name === "map") location.hash = "#/";
 });
 
 paint();

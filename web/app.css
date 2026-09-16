@@ -66,6 +66,12 @@ main { padding: 8px 0 48px; min-width: 0; }
 .compose input { flex: 1; padding: 8px 0; }
 
 .issue { padding: 16px 20px 40px; max-width: 860px; }
+.map-head { padding: 16px 20px 0; max-width: 960px; }
+.map-head h1 { margin-bottom: 8px; }
+.map-body { color: var(--muted); max-height: 220px; overflow: auto; margin-bottom: 8px; }
+.subnav { display: flex; gap: 4px; margin: 8px 0 4px; border-bottom: 1px solid var(--line); }
+.subnav button { color: var(--muted); padding: 8px 10px; }
+.subnav button.active, .subnav button:hover { color: var(--fg); }
 .kicker { color: var(--muted); margin-bottom: 8px; }
 h1 { font-size: 16px; font-weight: 600; margin: 0 0 12px; }
 .body, .comment .text {

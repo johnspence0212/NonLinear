@@ -91,6 +91,20 @@ The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x`
 
 `list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `set_blocked_by`, `list_frontier`, `claim_issue`, `resolve_issue`.
 
+## Views
+
+Global (left nav), across every issue:
+
+| View | Shows |
+| --- | --- |
+| `maps` | Wayfinder maps only. Opening one is the usual working surface. |
+| `open` | Every open issue |
+| `frontier` | Takeable tickets (open, unclaimed, unblocked) |
+| `closed` | Closed issues |
+| `all` | Everything |
+
+Inside a map (`#/map/12`): the map body stays at the top, and a second filter row scopes **that map’s tickets** to open / frontier / closed / all. New issues composed there become children of the map. Agents do the same with `list_issues` `parentId` and `list_frontier` `parentId`.
+
 ## Keyboard (UI)
 
 `j` / `k` move, `Enter` open, `Esc` back, `/` focus new issue.
