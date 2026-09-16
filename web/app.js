@@ -119,7 +119,7 @@ async function renderIssue(id) {
     .map((c) => {
       const cm = mark(c);
       return `<a class="row" href="#/${c.id}">
-        <span class="indent">└</span>
+        <span class="indent">-</span>
         <span class="id">${c.identifier}</span>
         <span class="title">${esc(c.title)}</span>
         <span class="mark ${cm.cls}">${cm.ch} ${c.assignee ? "@" + esc(c.assignee) : c.blocked ? "blocked" : ""}</span>
@@ -151,9 +151,9 @@ async function renderIssue(id) {
       </div>
       <div class="body">${esc(issue.body) || `<span class="muted">empty body</span>`}</div>
       <div class="chips">
-        <span>parent ${parent}</span>
-        <span>blocked by ${blockers}</span>
-        <span>${esc(issue.project)}</span>
+        <span class="chip">parent ${parent}</span>
+        <span class="chip">blocked by ${blockers}</span>
+        <span class="chip">${esc(issue.project)}</span>
       </div>
       <div class="actions">
         ${issue.state === "open" && !issue.assignee ? `<button data-act="claim">claim</button>` : ""}

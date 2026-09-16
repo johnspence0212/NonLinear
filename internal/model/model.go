@@ -89,6 +89,15 @@ func CloneIssue(in Issue) Issue {
 		v := *in.ParentID
 		out.ParentID = &v
 	}
+	if out.Labels == nil {
+		out.Labels = []string{}
+	}
+	if out.BlockedBy == nil {
+		out.BlockedBy = []int{}
+	}
+	if out.Comments == nil {
+		out.Comments = []Comment{}
+	}
 	return out
 }
 
