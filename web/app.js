@@ -449,6 +449,25 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && r.name === "map") location.hash = "#/";
 });
 
+const THEMES = { orange: "#e85d04", matrix: "#00e64d", coop: "#00a1cc" };
+
+function applyTheme(name) {
+  if (!THEMES[name]) name = "matrix";
+  document.documentElement.dataset.theme = name;
+  localStorage.setItem("nl-theme", name);
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta) meta.content = THEMES[name];
+  document.querySelectorAll(".swatch").forEach((b) => {
+    b.setAttribute("aria-checked", b.dataset.theme === name ? "true" : "false");
+  });
+}
+
+applyTheme(localStorage.getItem("nl-theme") || "matrix");
+document.querySelector(".swatches").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-theme]");
+  if (b) applyTheme(b.dataset.theme);
+});
+
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("/sw.js").catch(() => {});
 }

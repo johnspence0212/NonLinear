@@ -8,6 +8,9 @@
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="nonlinear" />
     <title>nonlinear</title>
+    <script>
+      document.documentElement.dataset.theme = localStorage.getItem("nl-theme") || "matrix";
+    </script>
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
@@ -30,6 +33,11 @@
       <footer>
         <span>j/k move · enter open · esc back · / new</span>
         <span id="counts" class="foot-counts"></span>
+        <div class="swatches" role="radiogroup" aria-label="color">
+          <button type="button" class="swatch" data-theme="orange" title="orange" aria-label="orange"></button>
+          <button type="button" class="swatch" data-theme="matrix" title="matrix green" aria-label="matrix green"></button>
+          <button type="button" class="swatch" data-theme="coop" title="coop blue" aria-label="coop blue"></button>
+        </div>
         <button id="install" hidden>install window</button>
         <span class="foot-brand">nonlinear</span>
       </footer>
