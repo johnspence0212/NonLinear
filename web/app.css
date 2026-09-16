@@ -21,11 +21,11 @@
   --banner-fg: #1c1208;
   --banner-ph: #5a2a08;
 }
-[data-theme="coop"] {
-  --accent: #00a1cc;
-  --take: #00a1cc;
-  --banner-fg: #041820;
-  --banner-ph: #0a4a5c;
+[data-theme="cool"] {
+  --accent: #5ba8e8;
+  --take: #5ba8e8;
+  --banner-fg: #0a1620;
+  --banner-ph: #1a3d5c;
 }
 
 * { box-sizing: border-box; }
@@ -198,7 +198,7 @@ footer .foot-counts .take { color: var(--accent); }
 }
 .swatch[data-theme="orange"] { background: #e85d04; }
 .swatch[data-theme="matrix"] { background: #00e64d; }
-.swatch[data-theme="coop"] { background: #00a1cc; }
+.swatch[data-theme="cool"] { background: #5ba8e8; }
 .swatch[aria-checked="true"] { box-shadow: 0 0 0 1px var(--bg-3), 0 0 0 2px var(--fg); }
 footer .foot-brand { margin-left: auto; color: var(--accent); }
 #install { color: var(--accent); }

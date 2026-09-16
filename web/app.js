@@ -449,9 +449,10 @@ window.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && r.name === "map") location.hash = "#/";
 });
 
-const THEMES = { orange: "#e85d04", matrix: "#00e64d", coop: "#00a1cc" };
+const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };
 
 function applyTheme(name) {
+  if (name === "coop") name = "cool";
   if (!THEMES[name]) name = "matrix";
   document.documentElement.dataset.theme = name;
   localStorage.setItem("nl-theme", name);
