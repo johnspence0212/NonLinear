@@ -3,25 +3,42 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#e85d04" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-title" content="nonlinear" />
     <title>nonlinear</title>
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="icon" href="/icon-192.png" />
+    <link rel="apple-touch-icon" href="/icon-192.png" />
     <link rel="stylesheet" href="/app.css" />
   </head>
   <body>
     <div id="app">
       <header>
-        <a class="brand" href="#/">nonlinear</a>
-        <span id="status" class="muted"></span>
+        <div class="tabs">
+          <a class="tab" id="tab-home" href="#/">home</a>
+        </div>
+        <div id="crumb" class="crumb"></div>
+        <div id="counts" class="head-counts"></div>
       </header>
       <div class="shell">
         <nav>
-          <button data-filter="open">open</button>
-          <button data-filter="frontier">frontier</button>
-          <button data-filter="maps">maps</button>
-          <button data-filter="closed">closed</button>
-          <button data-filter="all">all</button>
+          <button data-filter="home">home</button>
+          <button data-filter="maps">maps <span data-count="maps"></span></button>
+          <button data-filter="open">open <span data-count="open"></span></button>
+          <button data-filter="frontier">frontier <span data-count="frontier"></span></button>
+          <button data-filter="closed">closed <span data-count="closed"></span></button>
+          <button data-filter="all">all <span data-count="all"></span></button>
         </nav>
         <main id="main"></main>
+        <aside id="rail"></aside>
       </div>
+      <footer>
+        <span>j/k move · enter open · esc back · / new</span>
+        <button id="install" hidden>install window</button>
+        <span class="foot-brand">nonlinear</span>
+      </footer>
     </div>
     <script src="/app.js"></script>
   </body>

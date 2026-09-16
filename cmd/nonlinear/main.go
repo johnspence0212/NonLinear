@@ -23,6 +23,7 @@ func main() {
 	addr := flag.String("addr", envOr("ADDR", ""), "listen address, e.g. :3333")
 	dataDir := flag.String("data", envOr("DATA_DIR", "./data"), "directory for db.json")
 	token := flag.String("token", envOr("NL_TOKEN", ""), "optional bearer token for /api and /mcp")
+	openUI := flag.Bool("open", envBool("NL_OPEN"), "open a dedicated Chromium app window")
 	flag.Parse()
 
 	listen := *addr
@@ -63,9 +64,12 @@ func main() {
 	})
 
 	handler := withCORS(withAuth(*token, mux))
-	fmt.Printf("nonlinear  ui  http://localhost%s\n", listen)
-	fmt.Printf("nonlinear  mcp http://localhost%s/mcp\n", listen)
+	fmt.Printf("nonlinear  ui  http://127.0.0.1%s\n", listen)
+	fmt.Printf("nonlinear  mcp http://127.0.0.1%s/mcp\n", listen)
 	fmt.Printf("nonlinear  data %s\n", filepath.Join(*dataDir, "db.json"))
+	if *openUI {
+		openAppWindow("http://127.0.0.1" + listen)
+	}
 	if err := http.ListenAndServe(listen, handler); err != nil {
 		log.Fatal(err)
 	}
@@ -77,7 +81,7 @@ func withAuth(token string, next http.Handler) http.Handler {
 	}
 	want := []byte("Bearer " + token)
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path == "/" || strings.HasPrefix(r.URL.Path, "/app.") || strings.HasSuffix(r.URL.Path, ".css") || strings.HasSuffix(r.URL.Path, ".js") {
+		if isStatic(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -102,6 +106,23 @@ func withCORS(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+func isStatic(path string) bool {
+	if path == "/" || path == "/index.html" {
+		return true
+	}
+	switch path {
+	case "/app.css", "/app.js", "/manifest.json", "/sw.js", "/icon-192.png", "/icon-512.png":
+		return true
+	default:
+		return false
+	}
+}
+
+func envBool(key string) bool {
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(key)))
+	return v == "1" || v == "true" || v == "yes"
 }
 
 func envOr(key, fallback string) string {

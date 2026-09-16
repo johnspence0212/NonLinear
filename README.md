@@ -38,13 +38,22 @@ Docker:
 docker compose up --build
 ```
 
-Then open [http://localhost:3333](http://localhost:3333).
+Then open the **app window** (not a browser tab):
+
+```bash
+./nonlinear -open
+```
+
+That starts the server and launches Chrome/Chromium/Edge in `--app` mode: its own window, no tabs. Same thing as installing the PWA (Chrome → ⊙ / Install nonlinear). After install, nonlinear lives in the dock like any other app.
+
+Or visit [http://127.0.0.1:3333](http://127.0.0.1:3333) once and use Install.
 
 | Flag / env | Default | Meaning |
 | --- | --- | --- |
 | `-addr` / `ADDR` / `PORT` | `:3333` | Listen address (`PORT` becomes `:<port>`) |
 | `-data` / `DATA_DIR` | `./data` | Directory for `db.json` |
 | `-token` / `NL_TOKEN` | empty | Optional bearer token for `/api` and `/mcp` |
+| `-open` / `NL_OPEN=1` | off | Dedicated Chromium app window |
 
 ## Cursor MCP
 
@@ -93,17 +102,18 @@ The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x`
 
 ## Views
 
-Global (left nav), across every issue:
+Left nav is global. **home** is the boxed dashboard (frontier + maps). Opening a map is `#/map/12` with its own open/frontier/closed/all filters.
 
 | View | Shows |
 | --- | --- |
-| `maps` | Wayfinder maps only. Opening one is the usual working surface. |
+| `home` | Frontier and maps in separate boxes |
+| `maps` | Wayfinder maps only |
 | `open` | Every open issue |
 | `frontier` | Takeable tickets (open, unclaimed, unblocked) |
 | `closed` | Closed issues |
 | `all` | Everything |
 
-Inside a map (`#/map/12`): the map body stays at the top, and a second filter row scopes **that map’s tickets** to open / frontier / closed / all. New issues composed there become children of the map. Agents do the same with `list_issues` `parentId` and `list_frontier` `parentId`.
+Inside a map: tickets are scoped to that map. Compose creates a child. Agents use `list_issues` `parentId` and `list_frontier` `parentId`.
 
 ## Keyboard (UI)
 
