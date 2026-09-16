@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="theme-color" content="#e85d04" />
+    <meta name="theme-color" content="#62b84a" />
     <meta name="mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-title" content="nonlinear" />
@@ -15,13 +15,6 @@
   </head>
   <body>
     <div id="app">
-      <header>
-        <div class="tabs">
-          <a class="tab" id="tab-home" href="#/">home</a>
-        </div>
-        <div id="crumb" class="crumb"></div>
-        <div id="counts" class="head-counts"></div>
-      </header>
       <div class="shell">
         <nav>
           <button data-filter="home">home</button>
@@ -36,6 +29,7 @@
       </div>
       <footer>
         <span>j/k move · enter open · esc back · / new</span>
+        <span id="counts" class="foot-counts"></span>
         <button id="install" hidden>install window</button>
         <span class="foot-brand">nonlinear</span>
       </footer>

@@ -216,12 +216,10 @@ async function renderHome() {
 
 function syncChrome() {
   const r = route();
-  $("#tab-home").classList.toggle("active", r.name === "list" && state.filter === "home");
   document.querySelectorAll("nav button").forEach((b) => {
     const onMap = r.name === "map" && b.dataset.filter === "maps";
     b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
   });
-  if (r.name === "list") $("#crumb").textContent = state.filter;
 }
 
 async function renderMap(id) {
@@ -239,7 +237,6 @@ async function renderMap(id) {
     .join("");
   const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
   const kids = map.children || [];
-  $("#crumb").textContent = `maps / ${map.identifier}`;
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
@@ -305,7 +302,6 @@ async function renderIssue(id) {
     ? `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.identifier)} ${esc(issue.parent.title)}</a>`
     : "—";
   const blockers = (issue.blockers || []).map((b) => `<a href="${hrefFor(b)}">${esc(b.identifier)}</a>`).join(" ") || "—";
-  $("#crumb").textContent = issue.identifier;
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
