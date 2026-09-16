@@ -1,0 +1,13 @@
+services:
+  nonlinear:
+    build: .
+    ports:
+      - "3333:3333"
+    volumes:
+      - nonlinear-data:/data
+    environment:
+      DATA_DIR: /data
+      PORT: "3333"
+
+volumes:
+  nonlinear-data:

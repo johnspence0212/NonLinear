@@ -1,0 +1,5 @@
+/data/*.json
+/nonlinear
+/dist/
+*.exe
+.DS_Store
