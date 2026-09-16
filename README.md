@@ -113,7 +113,7 @@ Left nav is global. **home** is the boxed dashboard (frontier + maps). Opening a
 | `closed` | Closed issues |
 | `all` | Everything |
 
-Inside a map: tickets are scoped to that map. Compose creates a child. Agents use `list_issues` `parentId` and `list_frontier` `parentId`.
+Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New issues composed on that view get the tag.
 
 ## Keyboard (UI)
 

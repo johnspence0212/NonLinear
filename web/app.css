@@ -122,8 +122,26 @@ aside {
 }
 .row:hover, .row.selected { background: #2a2f2a; }
 .row .id { color: var(--muted); }
-.row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.row .meta { color: var(--muted); }
+.row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
+.row .meta { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+.tag {
+  color: var(--take);
+  padding: 0;
+  border-radius: 4px;
+}
+.tag:hover { text-decoration: underline; }
+.tag.active, .chips .tag.active {
+  color: var(--fg);
+  border: 1px solid var(--accent);
+  padding: 1px 6px;
+}
+.chips .tag {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: var(--muted);
+}
+.chips .tag:hover { color: var(--accent); border-color: var(--accent); }
 .mark { color: var(--muted); }
 .mark.take { color: var(--take); }
 .mark.claim { color: var(--claim); }
@@ -173,7 +191,7 @@ textarea {
 .rail-line { display: flex; justify-content: space-between; padding: 4px 0; color: var(--muted); }
 .rail-line b { color: var(--fg); font-weight: 600; }
 .tags { display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 12px; }
-.tags span { color: var(--take); }
+.tags .tag { color: var(--take); }
 
 footer {
   display: flex;

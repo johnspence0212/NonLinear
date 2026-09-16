@@ -1,4 +1,4 @@
-const CACHE = "nonlinear-v5";
+const CACHE = "nonlinear-v6";
 const STATIC = ["/", "/app.css", "/app.js", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

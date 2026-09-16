@@ -16,9 +16,30 @@ function route() {
   const hash = location.hash.replace(/^#/, "") || "/";
   const map = hash.match(/^\/map\/(\d+)$/);
   if (map) return { name: "map", id: Number(map[1]) };
+  const tag = hash.match(/^\/tag\/(.+)$/);
+  if (tag) return { name: "tag", label: decodeURIComponent(tag[1]) };
   const issue = hash.match(/^\/(\d+)$/);
   if (issue) return { name: "issue", id: Number(issue[1]) };
   return { name: "list" };
+}
+
+function activeTag() {
+  const r = route();
+  return r.name === "tag" ? r.label : "";
+}
+
+function tagHref(label) {
+  return "#/tag/" + encodeURIComponent(label);
+}
+
+function tagButtons(labels) {
+  const on = activeTag();
+  return (labels || [])
+    .map(
+      (l) =>
+        `<button type="button" class="tag ${on === l ? "active" : ""}" data-tag="${esc(l)}">#${esc(l)}</button>`
+    )
+    .join(" ");
 }
 
 function isMap(issue) {
@@ -55,12 +76,12 @@ function rowHTML(issue, selected, nav = true) {
     : issue.openBlockers
       ? `blocked×${issue.openBlockers}`
       : "";
-  return `<a class="row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} href="${hrefFor(issue)}" data-id="${issue.id}">
-    <span class="id">${issue.identifier}</span>
-    <span class="title">${esc(issue.title)}</span>
-    <span class="meta">${esc((issue.labels || []).join(" "))}</span>
+  return `<div class="row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${issue.id}">
+    <a class="id" href="${hrefFor(issue)}">${issue.identifier}</a>
+    <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
+    <span class="meta">${tagButtons(issue.labels)}</span>
     <span class="mark ${m.cls}">${extra || m.ch}</span>
-  </a>`;
+  </div>`;
 }
 
 function esc(s) {
@@ -138,7 +159,7 @@ function renderRail(extraHTML = "") {
     ) +
     box(
       "<strong>labels</strong>",
-      `<div class="tags">${state.labels.map((l) => `<span>#${esc(l)}</span>`).join(" ")}</div>`
+      `<div class="tags">${tagButtons(state.labels) || `<span class="muted">none</span>`}</div>`
     ) +
     extraHTML;
 }
@@ -168,6 +189,23 @@ function listBox(title, placeholder, rows) {
     rows || `<div class="empty">none</div>`,
     composeBar(placeholder)
   );
+}
+
+function renderTagList(label) {
+  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+  main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+    `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
+    rows || `<div class="empty">no issues with this tag</div>`,
+    composeBar("new issue with this tag")
+  )}`;
+  bindCompose({ labels: [label] });
+  syncChrome();
+}
+
+async function loadTag(label) {
+  const data = await api("/api/issues?" + new URLSearchParams({ labels: label }).toString());
+  state.issues = data.issues || [];
+  if (state.selected >= state.issues.length) state.selected = 0;
 }
 
 function renderList() {
@@ -309,7 +347,7 @@ async function renderIssue(id) {
       `<div class="box-b pad">
         <div class="kicker"><a href="${backHref(issue)}">←</a></div>
         <h1>${esc(issue.title)}</h1>
-        <div class="chips">${(issue.labels || []).map((l) => `<span class="chip">${esc(l)}</span>`).join("") || `<span class="muted">no labels</span>`}</div>
+        <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no labels</span>`}</div>
         <div class="body">${esc(issue.body) || `<span class="muted">empty body</span>`}</div>
         <div class="actions">
           ${issue.state === "open" && !issue.assignee ? `<button data-act="claim">claim</button>` : ""}
@@ -404,6 +442,18 @@ async function paint() {
     renderRail();
     return;
   }
+  if (r.name === "tag") {
+    try {
+      await loadTag(r.label);
+      state.error = "";
+    } catch (err) {
+      state.error = err.message;
+      state.issues = [];
+    }
+    renderTagList(r.label);
+    renderRail();
+    return;
+  }
   if (r.name === "map") {
     await renderMap(r.id);
     return;
@@ -418,6 +468,16 @@ document.querySelector("nav").addEventListener("click", (e) => {
   localStorage.setItem("nl-filter", state.filter);
   location.hash = "#/";
   paint();
+});
+
+document.getElementById("app").addEventListener("click", (e) => {
+  const t = e.target.closest("[data-tag]");
+  if (!t) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const label = t.dataset.tag;
+  const cur = route();
+  location.hash = cur.name === "tag" && cur.label === label ? "#/" : tagHref(label);
 });
 
 function highlightSelected() {
@@ -440,13 +500,15 @@ window.addEventListener("keydown", (e) => {
     state.selected = Math.max(0, state.selected - 1);
     highlightSelected();
   }
-  if (e.key === "Enter" && state.issues[state.selected]) location.hash = hrefFor(state.issues[state.selected]);
+  if (e.key === "Enter" && state.issues[state.selected]) {
+    location.hash = hrefFor(state.issues[state.selected]);
+  }
   if (e.key === "/") {
     e.preventDefault();
     const input = document.querySelector(".banner input, .compose input");
     if (input) input.focus();
   }
-  if (e.key === "Escape" && r.name === "map") location.hash = "#/";
+  if (e.key === "Escape" && (r.name === "map" || r.name === "tag")) location.hash = "#/";
 });
 
 const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };
