@@ -435,6 +435,21 @@ function goBack() {
   location.hash = "#/";
 }
 
+function pageBackHTML() {
+  return `<div class="page-bar"><button type="button" class="back-btn" data-back>← back</button></div>`;
+}
+
+function ensurePageBack() {
+  const r = route();
+  const home = r.name === "list" && state.filter === "home";
+  const existing = main.querySelector(":scope > .page-bar");
+  if (home) {
+    existing?.remove();
+    return;
+  }
+  if (!existing) main.insertAdjacentHTML("afterbegin", pageBackHTML());
+}
+
 function syncChrome() {
   const r = route();
   document.querySelectorAll("nav button").forEach((b) => {
@@ -445,11 +460,7 @@ function syncChrome() {
     const onMap = r.name === "map" && b.dataset.filter === "maps";
     b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
   });
-  const back = $("#back");
-  if (back) {
-    const home = r.name === "list" && state.filter === "home";
-    back.hidden = home;
-  }
+  ensurePageBack();
 }
 
 async function renderMap(id) {
@@ -754,59 +765,63 @@ async function paint() {
   } catch (err) {
     state.error = err.message;
   }
-  const r = route();
-  const si = $("#global-search");
-  if (si && document.activeElement !== si) si.value = r.name === "search" ? r.query : "";
-  if (r.name === "list" && state.filter === "home") {
-    try {
-      state.error = "";
-      await renderHome();
-    } catch (err) {
-      state.error = err.message;
-      main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+  try {
+    const r = route();
+    const si = $("#global-search");
+    if (si && document.activeElement !== si) si.value = r.name === "search" ? r.query : "";
+    if (r.name === "list" && state.filter === "home") {
+      try {
+        state.error = "";
+        await renderHome();
+      } catch (err) {
+        state.error = err.message;
+        main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+      }
+      renderRail();
+      return;
     }
-    renderRail();
-    return;
-  }
-  if (r.name === "list") {
-    try {
-      await loadList();
-      state.error = "";
-    } catch (err) {
-      state.error = err.message;
-      state.issues = [];
+    if (r.name === "list") {
+      try {
+        await loadList();
+        state.error = "";
+      } catch (err) {
+        state.error = err.message;
+        state.issues = [];
+      }
+      renderList();
+      renderRail();
+      return;
     }
-    renderList();
-    renderRail();
-    return;
-  }
-  if (r.name === "tag") {
-    try {
-      await loadTag(r.label);
-      state.error = "";
-    } catch (err) {
-      state.error = err.message;
-      state.issues = [];
+    if (r.name === "tag") {
+      try {
+        await loadTag(r.label);
+        state.error = "";
+      } catch (err) {
+        state.error = err.message;
+        state.issues = [];
+      }
+      renderTagList(r.label);
+      renderRail();
+      return;
     }
-    renderTagList(r.label);
-    renderRail();
-    return;
+    if (r.name === "settings") {
+      renderSettings();
+      renderRail();
+      return;
+    }
+    if (r.name === "search") {
+      await renderSearch(r.query);
+      renderRail();
+      return;
+    }
+    if (r.name === "map") {
+      await renderMap(r.id);
+      return;
+    }
+    await renderIssue(r.id);
+  } finally {
+    ensurePageBack();
   }
-  if (r.name === "settings") {
-    renderSettings();
-    renderRail();
-    return;
-  }
-  if (r.name === "search") {
-    await renderSearch(r.query);
-    renderRail();
-    return;
-  }
-  if (r.name === "map") {
-    await renderMap(r.id);
-    return;
-  }
-  await renderIssue(r.id);
 }
 
 async function renderSearch(query) {
@@ -904,13 +919,14 @@ document.getElementById("global-search").addEventListener("keydown", (e) => {
   }
 });
 
-document.getElementById("back").addEventListener("click", (e) => {
-  e.preventDefault();
-  goBack();
-});
-
 document.getElementById("refresh").addEventListener("click", () => {
   paint();
+});
+
+main.addEventListener("click", (e) => {
+  if (!e.target.closest("[data-back]")) return;
+  e.preventDefault();
+  goBack();
 });
 
 document.getElementById("app").addEventListener("click", (e) => {

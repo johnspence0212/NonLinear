@@ -135,6 +135,17 @@ main {
   flex-direction: column;
   gap: 14px;
 }
+.page-bar {
+  display: flex;
+  align-items: center;
+}
+.back-btn {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 6px 12px;
+  color: var(--muted);
+}
+.back-btn:hover { color: var(--fg); border-color: var(--accent); }
 aside {
   border-left: 1px solid var(--line);
   padding: 16px 12px;
