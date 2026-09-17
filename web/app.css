@@ -199,7 +199,6 @@ aside {
   align-items: baseline;
 }
 .row:hover, .row.selected { background: var(--bg-3); }
-.row.is-closed .title { color: var(--muted); text-decoration: line-through; text-decoration-thickness: 1px; }
 .row .id { color: var(--muted); }
 .row .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--fg); }
 .row .meta { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
@@ -245,7 +244,6 @@ aside {
 .stamp.take, .stamp.open { border-color: #245c36; color: var(--take); }
 .stamp.claim { border-color: #6a5230; color: var(--claim); }
 .kicker { display: flex; align-items: center; gap: 10px; color: var(--muted); margin-bottom: 8px; }
-#issue-head.is-closed h1 { color: var(--muted); }
 .overdue { color: var(--warn); }
 .muted { color: var(--muted); }
 
