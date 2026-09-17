@@ -104,20 +104,19 @@ The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x`
 
 ## Views
 
-Left nav is global. **home** is the boxed dashboard (frontier + maps). Opening a map is `#/map/12` with its own open/frontier/closed/all filters.
+Left nav is global. **home** is the boxed dashboard (takeable tickets grouped by map + maps). Maps are the parent object: every ticket belongs to a map and is always shown under its map header. Opening a map is `#/map/12` with its own open/frontier/closed/all filters.
 
 | View | Shows |
 | --- | --- |
-| `home` | Frontier and maps in separate boxes |
-| `maps` | Wayfinder maps only |
-| `open` | Every open issue |
-| `frontier` | Takeable tickets (open, unclaimed, unblocked) |
-| `closed` | Closed issues |
-| `all` | Everything |
+| `home` | Stats strip (maps / open / done / % complete), takeable tickets grouped by map, plus maps with per-map progress bars (and a new-map box) |
+| `maps` | Wayfinder maps only (with a new-map box) |
+| `open` / `frontier` / `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
 | `settings` | Version, data path, wipe the database |
 
-Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New issues composed on that view get the tag.
+Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag.
+
+The header search (`/`) matches identifier, title, and body across maps and tickets, split into maps + tickets-by-map boxes.
 
 ## Keyboard (UI)
 
-`j` / `k` move, `Enter` open, `Esc` back, `/` focus new issue.
+`j` / `k` move, `Enter` open, `Esc` back, `/` focus search.

@@ -120,7 +120,7 @@ func isStatic(path string) bool {
 		return true
 	}
 	switch path {
-	case "/app.css", "/app.js", "/manifest.json", "/sw.js", "/icon-192.png", "/icon-512.png":
+	case "/app.css", "/app.js", "/md.js", "/manifest.json", "/sw.js", "/icon-192.png", "/icon-512.png":
 		return true
 	default:
 		return false

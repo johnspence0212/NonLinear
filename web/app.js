@@ -20,6 +20,8 @@ function route() {
   if (map) return { name: "map", id: Number(map[1]) };
   const tag = hash.match(/^\/tag\/(.+)$/);
   if (tag) return { name: "tag", label: decodeURIComponent(tag[1]) };
+  const search = hash.match(/^\/search\/(.+)$/);
+  if (search) return { name: "search", query: decodeURIComponent(search[1]) };
   if (hash === "/settings") return { name: "settings" };
   const issue = hash.match(/^\/(\d+)$/);
   if (issue) return { name: "issue", id: Number(issue[1]) };
@@ -139,20 +141,22 @@ async function refreshStats() {
   const ver = $("#version");
   if (ver) ver.textContent = state.version ? "v" + state.version : "";
   const all = allData.issues || [];
+  const tickets = all.filter((i) => !isMap(i));
   state.stats = {
-    all: all.length,
-    open: all.filter((i) => i.state === "open").length,
-    closed: all.filter((i) => i.state === "closed").length,
+    all: tickets.length,
+    total: all.length,
+    open: tickets.filter((i) => i.state === "open").length,
+    closed: tickets.filter((i) => i.state === "closed").length,
     maps: all.filter(isMap).length,
-    frontier: all.filter((i) => i.frontier).length,
-    blocked: all.filter((i) => i.blocked && i.state === "open").length,
+    frontier: tickets.filter((i) => i.frontier).length,
+    blocked: tickets.filter((i) => i.blocked && i.state === "open").length,
   };
   state.labels = labelData.labels || [];
   document.querySelectorAll("[data-count]").forEach((el) => {
     const n = state.stats[el.dataset.count];
     el.textContent = n || "";
   });
-  $("#counts").innerHTML = `<b>${state.stats.open}</b> open · <b class="take">${state.stats.frontier}</b> frontier`;
+  $("#counts").innerHTML = `<b>${state.stats.open}</b> open tickets · <b class="take">${state.stats.frontier}</b> frontier`;
 }
 
 function renderRail(extraHTML = "") {
@@ -181,7 +185,8 @@ async function loadList() {
   if (state.filter === "frontier") q.set("frontier", "1");
   if (state.filter === "maps") q.set("labels", "wayfinder:map");
   const data = await api("/api/issues?" + q.toString());
-  state.issues = data.issues || [];
+  const fetched = data.issues || [];
+  state.issues = state.filter === "maps" ? fetched : fetched.filter((i) => !isMap(i));
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
@@ -202,31 +207,123 @@ function listBox(title, placeholder, rows) {
   );
 }
 
+function ticketHint() {
+  return `<div class="hint">tickets live on maps — open a map to add one</div>`;
+}
+
+function groupTicketsByMap(issues) {
+  const groups = new Map();
+  for (const t of issues || []) {
+    const p = t.parent || null;
+    const key = p ? `p${p.id}` : "inbox";
+    if (!groups.has(key)) groups.set(key, { parent: p, tickets: [] });
+    groups.get(key).tickets.push(t);
+  }
+  return [...groups.values()].sort((a, b) => {
+    if (!a.parent) return 1;
+    if (!b.parent) return -1;
+    return a.parent.id - b.parent.id;
+  });
+}
+
+function flattenGroups(groups) {
+  return groups.flatMap((g) => g.tickets);
+}
+
+function groupedTicketHTML(groups) {
+  let i = 0;
+  return groups
+    .map((g) => {
+      const head = g.parent
+        ? `<a class="group-map" href="${hrefFor(g.parent)}">${esc(g.parent.title)}</a>`
+        : `<span class="group-map">inbox · no map</span>`;
+      const n = g.tickets.length;
+      const rows = g.tickets
+        .map((t) => {
+          const sel = i === state.selected;
+          i++;
+          return rowHTML(t, sel);
+        })
+        .join("");
+      return `<div class="group"><div class="group-h">${head}<span>${n} ticket${n === 1 ? "" : "s"}</span></div><div class="group-rows">${rows}</div></div>`;
+    })
+    .join("");
+}
+
+function mapRowHTML(map, selected = false, nav = false) {
+  const kids = map.children || [];
+  const total = kids.length;
+  const done = kids.filter((c) => c.state === "closed").length;
+  const open = total - done;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return `<div class="row map-row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${map.id}">
+    <span class="map-mark">map</span>
+    <a class="title" href="#/map/${map.id}">${esc(map.title)}</a>
+    <span class="meta">${tagButtons(map.labels)}</span>
+    <span class="mark">${open} open · ${done} done</span>
+  </div>
+  <div class="progress"><i style="width:${pct}%"></i></div>`;
+}
+
+function statStrip() {
+  const s = state.stats;
+  const total = s.all || 0;
+  const done = s.closed || 0;
+  const pct = total ? Math.round((done / total) * 100) : 0;
+  return `<div class="stats">
+    <div class="stat"><div class="stat-v">${s.maps || 0}</div><div class="stat-l">maps</div></div>
+    <div class="stat"><div class="stat-v">${s.open || 0}</div><div class="stat-l">open tickets</div></div>
+    <div class="stat"><div class="stat-v">${done}</div><div class="stat-l">done</div></div>
+    <div class="stat"><div class="stat-v">${pct}<span class="stat-u">%</span></div><div class="stat-l">complete</div><div class="progress slim"><i style="width:${pct}%"></i></div></div>
+  </div>`;
+}
+
 function renderTagList(label) {
-  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+  if (label === "wayfinder:map") {
+    const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+      `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
+      rows || `<div class="empty">no maps with this tag</div>`,
+      composeBar("new map with this tag")
+    )}`;
+    bindCompose({ labels: [label] });
+    syncChrome();
+    return;
+  }
+  const groups = groupTicketsByMap(state.issues);
+  state.issues = flattenGroups(groups);
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
     `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
-    rows || `<div class="empty">no issues with this tag</div>`,
-    composeBar("new issue with this tag")
+    groupedTicketHTML(groups) || `<div class="empty">no tickets with this tag</div>`,
+    ticketHint()
   )}`;
-  bindCompose({ labels: [label] });
   syncChrome();
 }
 
 async function loadTag(label) {
   const data = await api("/api/issues?" + new URLSearchParams({ labels: label }).toString());
-  state.issues = data.issues || [];
+  const fetched = data.issues || [];
+  state.issues = label === "wayfinder:map" ? fetched : fetched.filter((i) => !isMap(i));
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
 function renderList() {
+  if (state.filter === "maps") {
+    const rows = state.issues.map((issue, i) => mapRowHTML(issue, i === state.selected, true)).join("");
+    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${listBox("maps", "new map", rows)}`;
+    bindCompose({ labels: ["wayfinder:map"] });
+    syncChrome();
+    return;
+  }
   const title =
-    state.filter === "maps" ? "maps" : state.filter === "frontier" ? "frontier" : state.filter === "open" ? "open" : state.filter === "closed" ? "closed" : "all";
-  const hint = state.filter === "maps" ? "new map" : "new issue";
-  const extra = state.filter === "maps" ? { labels: ["wayfinder:map"] } : {};
-  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
-  main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${listBox(title, hint, rows)}`;
-  bindCompose(extra);
+    state.filter === "frontier" ? "frontier" : state.filter === "open" ? "open" : state.filter === "closed" ? "closed" : "all";
+  const groups = groupTicketsByMap(state.issues);
+  state.issues = flattenGroups(groups);
+  main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+    `<strong>${title}</strong><span>tickets by map</span>`,
+    groupedTicketHTML(groups) || `<div class="empty">no tickets — open a map to add one</div>`,
+    ticketHint()
+  )}`;
   syncChrome();
 }
 
@@ -235,21 +332,25 @@ async function renderHome() {
     api("/api/issues?frontier=1"),
     api("/api/issues?labels=wayfinder:map"),
   ]);
-  const frontier = front.issues || [];
+  const frontier = (front.issues || []).filter((i) => !isMap(i));
   const mapList = maps.issues || [];
-  state.issues = frontier;
+  const groups = groupTicketsByMap(frontier);
+  state.issues = flattenGroups(groups);
+  if (state.selected >= state.issues.length) state.selected = 0;
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${statStrip()}
     ${box(
-      "<strong>frontier</strong><span>takeable now</span>",
-      frontier.map((issue, i) => rowHTML(issue, i === state.selected)).join("") || `<div class="empty">nothing takeable</div>`,
-      composeBar("new issue")
+      "<strong>frontier</strong><span>takeable tickets by map</span>",
+      groupedTicketHTML(groups) || `<div class="empty">nothing takeable</div>`,
+      ticketHint()
     )}
     ${box(
       `<strong>maps</strong><a href="#/" data-jump="maps">open maps view</a>`,
-      mapList.map((issue) => rowHTML(issue, false, false)).join("") || `<div class="empty">no maps</div>`
+      mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
+      composeBar("new map")
     )}`;
-  bindCompose({});
+  bindCompose({ labels: ["wayfinder:map"] });
   const jump = main.querySelector("[data-jump=maps]");
   if (jump) {
     jump.addEventListener("click", (e) => {
@@ -294,10 +395,10 @@ async function renderMap(id) {
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
       `<strong>${esc(map.identifier)}</strong><span>${map.state}</span>`,
-      `<div class="box-b pad">
+      `<div class="box-b pad" id="issue-head">
         <div class="kicker"><a href="#/">← maps</a></div>
         <h1>${esc(map.title)}</h1>
-        <div class="body map-body">${esc(map.body) || `<span class="muted">empty map body</span>`}</div>
+        <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
         <div class="actions">
           <button data-act="edit">edit map</button>
           <button data-act="delete" class="danger">delete map</button>
@@ -350,7 +451,7 @@ async function renderIssue(id) {
     .map(
       (c) => `<div class="comment">
         <div class="who">${esc(c.author)} · ${esc(c.createdAt).slice(0, 19).replace("T", " ")}</div>
-        <div class="text">${esc(c.body)}</div>
+        <div class="text">${renderMarkdown(c.body)}</div>
       </div>`
     )
     .join("");
@@ -362,11 +463,11 @@ async function renderIssue(id) {
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
       `<strong>${esc(issue.identifier)}</strong><span class="mark ${m.cls}">${m.ch} ${issue.state}${issue.assignee ? " @" + esc(issue.assignee) : ""}</span>`,
-      `<div class="box-b pad">
+      `<div class="box-b pad" id="issue-head">
         <div class="kicker"><a href="${backHref(issue)}">←</a></div>
         <h1>${esc(issue.title)}</h1>
         <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no labels</span>`}</div>
-        <div class="body">${esc(issue.body) || `<span class="muted">empty body</span>`}</div>
+        <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty body</span>`}</div>
         <div class="actions">
           ${issue.state === "open" && !issue.assignee ? `<button data-act="claim">claim</button>` : ""}
           ${issue.assignee && issue.state === "open" ? `<button data-act="unclaim">unclaim</button>` : ""}
@@ -411,6 +512,49 @@ async function renderIssue(id) {
   syncChrome();
 }
 
+function editFormHTML(issue) {
+  return `<label class="edit-label">title<input id="edit-title" value="${esc(issue.title).replaceAll('"', "&quot;")}" /></label>
+  <label class="edit-label">body<textarea id="edit-body">${esc(issue.body || "")}</textarea></label>
+  <div class="actions"><button data-save>save</button><button data-cancel>cancel</button></div>`;
+}
+
+function bindEditForm(issue) {
+  const save = main.querySelector("[data-save]");
+  const cancel = main.querySelector("[data-cancel]");
+  cancel.addEventListener("click", () => paint());
+  save.addEventListener("click", async () => {
+    const title = main.querySelector("#edit-title").value.trim();
+    const body = main.querySelector("#edit-body").value;
+    if (!title) return;
+    try {
+      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body }) });
+      await paint();
+    } catch (err) {
+      state.error = err.message;
+      await paint();
+    }
+  });
+  main.querySelector("#issue-head").addEventListener("keydown", (e) => {
+    if (e.key === "Escape") paint();
+    if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+      e.preventDefault();
+      save.click();
+    }
+  });
+  const t = main.querySelector("#edit-title");
+  if (t) {
+    t.focus();
+    t.select();
+  }
+}
+
+function startInlineEdit(issue) {
+  const head = main.querySelector("#issue-head");
+  if (!head) return;
+  head.innerHTML = editFormHTML(issue);
+  bindEditForm(issue);
+}
+
 async function act(issue, kind) {
   try {
     if (kind === "claim") await api(`/api/issues/${issue.id}/claim`, { method: "POST", body: "{}" });
@@ -418,11 +562,8 @@ async function act(issue, kind) {
     if (kind === "close") await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ state: "closed" }) });
     if (kind === "reopen") await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ state: "open" }) });
     if (kind === "edit") {
-      const title = prompt("title", issue.title);
-      if (title == null) return;
-      const body = prompt("body", issue.body || "");
-      if (body == null) return;
-      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body }) });
+      startInlineEdit(issue);
+      return;
     }
     if (kind === "delete") {
       const kids = (issue.children || []).length;
@@ -448,6 +589,8 @@ async function paint() {
     state.error = err.message;
   }
   const r = route();
+  const si = $("#global-search");
+  if (si && document.activeElement !== si) si.value = r.name === "search" ? r.query : "";
   if (r.name === "list" && state.filter === "home") {
     try {
       state.error = "";
@@ -488,11 +631,46 @@ async function paint() {
     renderRail();
     return;
   }
+  if (r.name === "search") {
+    await renderSearch(r.query);
+    renderRail();
+    return;
+  }
   if (r.name === "map") {
     await renderMap(r.id);
     return;
   }
   await renderIssue(r.id);
+}
+
+async function renderSearch(query) {
+  let mapList = [];
+  let groups = [];
+  try {
+    const data = await api("/api/issues?" + new URLSearchParams({ query }).toString());
+    const all = data.issues || [];
+    mapList = all.filter(isMap);
+    groups = groupTicketsByMap(all.filter((i) => !isMap(i)));
+    state.issues = flattenGroups(groups);
+    if (state.selected >= state.issues.length) state.selected = 0;
+    state.error = "";
+  } catch (err) {
+    state.error = err.message;
+    state.issues = [];
+  }
+  const n = mapList.length + state.issues.length;
+  main.innerHTML = `
+    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${box(
+      `<strong>search</strong><span>${esc(query)} · ${n} match${n === 1 ? "" : "es"}</span><a href="#/" class="muted">clear</a>`,
+      mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps match</div>`
+    )}
+    ${box(
+      `<strong>tickets</strong><span>by map</span>`,
+      groupedTicketHTML(groups) || `<div class="empty">no tickets match</div>`,
+      ticketHint()
+    )}`;
+  syncChrome();
 }
 
 function renderSettings() {
@@ -502,7 +680,9 @@ function renderSettings() {
     `<div class="box-b pad">
       <div class="settings-meta">
         <div class="rail-line">version <b id="shown-version">${esc(state.version)}</b></div>
-        <div class="rail-line">issues <b>${s.all}</b></div>
+        <div class="rail-line">issues <b>${s.total ?? s.all}</b></div>
+        <div class="rail-line">tickets <b>${s.all}</b></div>
+        <div class="rail-line">maps <b>${s.maps}</b></div>
         <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
       </div>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
@@ -545,6 +725,19 @@ document.querySelector("nav").addEventListener("click", (e) => {
   paint();
 });
 
+document.getElementById("search-form").addEventListener("submit", (e) => {
+  e.preventDefault();
+  const q = document.getElementById("global-search").value.trim();
+  location.hash = q ? "#/search/" + encodeURIComponent(q) : "#/";
+});
+
+document.getElementById("global-search").addEventListener("keydown", (e) => {
+  if (e.key === "Escape") {
+    e.target.blur();
+    location.hash = "#/";
+  }
+});
+
 document.getElementById("app").addEventListener("click", (e) => {
   const t = e.target.closest("[data-tag]");
   if (!t) return;
@@ -580,10 +773,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.key === "/") {
     e.preventDefault();
-    const input = document.querySelector(".banner input, .compose input");
+    const input = $("#global-search");
     if (input) input.focus();
   }
-  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings")) location.hash = "#/";
+  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings" || r.name === "search")) location.hash = "#/";
 });
 
 const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };
