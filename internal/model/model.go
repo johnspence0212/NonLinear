@@ -55,6 +55,7 @@ type IssueView struct {
 	OpenBlockers int            `json:"openBlockers"`
 	Children     []IssueSummary `json:"children,omitempty"`
 	Blockers     []IssueSummary `json:"blockers,omitempty"`
+	Blocks       []IssueSummary `json:"blocks,omitempty"`
 	Parent       *IssueSummary  `json:"parent,omitempty"`
 }
 
@@ -132,8 +133,15 @@ func IsBlocked(issue Issue, byID map[int]Issue) bool {
 	return OpenBlockerCount(issue, byID) > 0
 }
 
+func IsMap(issue Issue) bool {
+	return HasLabel(issue, "wayfinder:map")
+}
+
 func IsFrontier(issue Issue, byID map[int]Issue) bool {
 	if issue.State != StateOpen {
+		return false
+	}
+	if IsMap(issue) {
 		return false
 	}
 	if AssigneeValue(issue) != "" {
@@ -164,6 +172,7 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		OpenBlockers: OpenBlockerCount(issue, byID),
 		Children:     []IssueSummary{},
 		Blockers:     []IssueSummary{},
+		Blocks:       []IssueSummary{},
 	}
 	if issue.ParentID != nil {
 		if parent, ok := byID[*issue.ParentID]; ok {
@@ -175,8 +184,15 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		if other.ParentID != nil && *other.ParentID == issue.ID {
 			v.Children = append(v.Children, Summarize(other, byID))
 		}
+		for _, bid := range other.BlockedBy {
+			if bid == issue.ID {
+				v.Blocks = append(v.Blocks, Summarize(other, byID))
+				break
+			}
+		}
 	}
 	sort.Slice(v.Children, func(i, j int) bool { return v.Children[i].ID < v.Children[j].ID })
+	sort.Slice(v.Blocks, func(i, j int) bool { return v.Blocks[i].ID < v.Blocks[j].ID })
 	for _, id := range issue.BlockedBy {
 		if blocker, ok := byID[id]; ok {
 			v.Blockers = append(v.Blockers, Summarize(blocker, byID))

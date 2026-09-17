@@ -90,11 +90,11 @@ Wayfinder operations on this tracker:
 | Create map | `create_issue` labels `wayfinder:map` |
 | Create child ticket | `create_issue` with `parentId` |
 | Wire blocking | `set_blocked_by` |
-| Next takeable ticket | `list_frontier` |
+| Next takeable ticket | `list_frontier` (`next` is the one to claim) |
 | Claim | `claim_issue` |
 | Resolve | `resolve_issue`, then `update_issue` on the map |
 
-The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x` closed.
+The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x` closed. Blocked tickets list what they wait on. Opening a ticket shows **blocked by** (and **blocks**) as clickable rows.
 
 ## MCP tools
 

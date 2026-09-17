@@ -74,19 +74,78 @@ function mark(issue) {
   return { cls: "", ch: "·" };
 }
 
+function sortRelations(items) {
+  return [...(items || [])].sort((a, b) => {
+    if (a.state !== b.state) return a.state === "open" ? -1 : 1;
+    return a.id - b.id;
+  });
+}
+
+function relCounts(items) {
+  const open = items.filter((i) => i.state !== "closed").length;
+  const closed = items.length - open;
+  if (!items.length) return "";
+  return [open ? `${open} open` : "", closed ? `${closed} closed` : ""].filter(Boolean).join(" · ");
+}
+
+function stamp(label, kind = "") {
+  return `<span class="stamp ${kind}">${esc(label)}</span>`;
+}
+
+function statusStamp(issue, lg = "") {
+  const size = lg ? ` ${lg}` : "";
+  if (issue.state === "closed") return stamp("closed", `closed${size}`);
+  if (issue.blocked) return stamp("blocked", `blocked${size}`);
+  if (issue.assignee) return stamp("claimed", `claim${size}`);
+  if (issue.frontier) return stamp("open", `take${size}`);
+  return stamp("open", `open${size}`);
+}
+
 function rowHTML(issue, selected, nav = true) {
   const m = mark(issue);
-  const extra = issue.assignee
-    ? `@${issue.assignee}`
-    : issue.openBlockers
-      ? `blocked×${issue.openBlockers}`
-      : "";
-  return `<div class="row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${issue.id}">
+  const closed = issue.state === "closed";
+  const extra = closed
+    ? stamp("closed", "closed")
+    : issue.blocked
+      ? stamp("blocked", "blocked")
+      : issue.assignee
+        ? `@${issue.assignee}`
+        : m.ch;
+  return `<div class="row ${selected ? "selected" : ""} ${closed ? "is-closed" : ""}" ${nav ? "data-nav" : ""} data-id="${issue.id}">
     <a class="id" href="${hrefFor(issue)}">${issue.identifier}</a>
     <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
     <span class="meta">${tagButtons(issue.labels)}</span>
-    <span class="mark ${m.cls}">${extra || m.ch}</span>
+    <span class="mark ${m.cls}">${extra}</span>
   </div>`;
+}
+
+function ticketHTML(issue, selected, nav = true) {
+  return rowHTML(issue, selected, nav);
+}
+
+function relationBox(title, items, empty) {
+  const list = sortRelations(items);
+  return box(
+    `<strong>${title}</strong><span>${relCounts(list)}</span>`,
+    list.map((i) => rowHTML(i, false, false)).join("") || `<div class="empty">${empty}</div>`
+  );
+}
+
+function railRelLine(issue) {
+  const m = mark(issue);
+  return `<a class="rel" href="${hrefFor(issue)}">
+    <span class="mark ${m.cls}">${m.ch}</span>
+    <span class="rel-title">${esc(issue.title)}</span>
+  </a>`;
+}
+
+function selectedBlockersHTML(issue) {
+  if (!issue) return "";
+  const blockers = sortRelations(issue.blockers);
+  return box(
+    `<strong>blocked by</strong><span>${esc(issue.identifier)}</span>`,
+    blockers.map(railRelLine).join("") || `<div class="empty">not blocked</div>`
+  );
 }
 
 function esc(s) {
@@ -242,7 +301,7 @@ function groupedTicketHTML(groups) {
         .map((t) => {
           const sel = i === state.selected;
           i++;
-          return rowHTML(t, sel);
+          return ticketHTML(t, sel);
         })
         .join("");
       return `<div class="group"><div class="group-h">${head}<span>${n} ticket${n === 1 ? "" : "s"}</span></div><div class="group-rows">${rows}</div></div>`;
@@ -280,7 +339,7 @@ function statStrip() {
 
 function renderTagList(label) {
   if (label === "wayfinder:map") {
-    const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+    const rows = state.issues.map((issue, i) => ticketHTML(issue, i === state.selected)).join("");
     main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
       `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
       rows || `<div class="empty">no maps with this tag</div>`,
@@ -389,12 +448,12 @@ async function renderMap(id) {
   const filters = ["open", "frontier", "closed", "all"]
     .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
     .join("");
-  const rows = state.issues.map((issue, i) => rowHTML(issue, i === state.selected)).join("");
+  const rows = state.issues.map((issue, i) => ticketHTML(issue, i === state.selected)).join("");
   const kids = map.children || [];
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
-      `<strong>${esc(map.identifier)}</strong><span>${map.state}</span>`,
+      `<strong>${esc(map.identifier)}</strong>${stamp(map.state === "closed" ? "closed" : "open", map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
         <div class="kicker"><a href="#/">← maps</a></div>
         <h1>${esc(map.title)}</h1>
@@ -428,7 +487,7 @@ async function renderMap(id) {
         <div class="rail-line">frontier <b>${kids.filter((c) => c.frontier).length}</b></div>
         <div class="rail-line">blocked <b>${kids.filter((c) => c.blocked).length}</b></div>
       </div>`
-    )
+    ) + `<div id="selected-rels">${selectedBlockersHTML(state.issues[state.selected])}</div>`
   );
   syncChrome();
 }
@@ -446,7 +505,7 @@ async function renderIssue(id) {
     location.replace(`#/map/${issue.id}`);
     return;
   }
-  const m = mark(issue);
+  const closed = issue.state === "closed";
   const comments = (issue.comments || [])
     .map(
       (c) => `<div class="comment">
@@ -456,14 +515,15 @@ async function renderIssue(id) {
     )
     .join("");
   const parent = issue.parent
-    ? `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.identifier)} ${esc(issue.parent.title)}</a>`
+    ? `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.title)}</a>`
     : "—";
-  const blockers = (issue.blockers || []).map((b) => `<a href="${hrefFor(b)}">${esc(b.identifier)}</a>`).join(" ") || "—";
+  const blockers = sortRelations(issue.blockers);
+  const blocks = sortRelations(issue.blocks);
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
-      `<strong>${esc(issue.identifier)}</strong><span class="mark ${m.cls}">${m.ch} ${issue.state}${issue.assignee ? " @" + esc(issue.assignee) : ""}</span>`,
-      `<div class="box-b pad" id="issue-head">
+      `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
+      `<div class="box-b pad ${closed ? "is-closed" : ""}" id="issue-head">
         <div class="kicker"><a href="${backHref(issue)}">←</a></div>
         <h1>${esc(issue.title)}</h1>
         <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no labels</span>`}</div>
@@ -477,6 +537,8 @@ async function renderIssue(id) {
         </div>
       </div>`
     )}
+    ${relationBox("blocked by", blockers, "not blocked — takeable when unassigned")}
+    ${blocks.length ? relationBox("blocks", blocks, "") : ""}
     ${box(
       "<strong>comments</strong>",
       `${comments || `<div class="empty">none</div>`}
@@ -490,10 +552,19 @@ async function renderIssue(id) {
       "<strong>links</strong>",
       `<div class="box-b pad">
         <div class="rail-line">parent <b>${parent}</b></div>
-        <div class="rail-line">blocked by <b>${blockers}</b></div>
         <div class="rail-line">project <b>${esc(issue.project)}</b></div>
       </div>`
-    )
+    ) +
+      box(
+        `<strong>blocked by</strong><span>${relCounts(blockers)}</span>`,
+        blockers.map(railRelLine).join("") || `<div class="empty">not blocked</div>`
+      ) +
+      (blocks.length
+        ? box(
+            `<strong>blocks</strong><span>${relCounts(blocks)}</span>`,
+            blocks.map(railRelLine).join("")
+          )
+        : "")
   );
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
   $("#comment").addEventListener("submit", async (e) => {
@@ -750,6 +821,8 @@ document.getElementById("app").addEventListener("click", (e) => {
 
 function highlightSelected() {
   document.querySelectorAll("main .row[data-nav]").forEach((el, i) => el.classList.toggle("selected", i === state.selected));
+  const slot = $("#selected-rels");
+  if (slot) slot.innerHTML = selectedBlockersHTML(state.issues[state.selected]);
 }
 
 window.addEventListener("hashchange", paint);

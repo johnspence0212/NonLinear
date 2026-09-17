@@ -7,6 +7,7 @@ import (
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
+	"github.com/johnspence0212/NonLinear/internal/model"
 	"github.com/johnspence0212/NonLinear/internal/store"
 	"github.com/johnspence0212/NonLinear/internal/version"
 )
@@ -16,7 +17,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_issues",
-		Description: "List NonLinear issues. Filter by state (open/closed), labels (AND), parentId (Wayfinder children of a map), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for takeable tickets.",
+		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (Wayfinder children of a map), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for takeable tickets. Closed issues are never takeable.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		filter := store.ListFilter{
 			State:        in.State,
@@ -30,12 +31,12 @@ func New(st *store.Store) *mcp.Server {
 			a := in.Assignee
 			filter.Assignee = &a
 		}
-		return textResult(st.List(filter))
+		return textResult(map[string]any{"issues": st.List(filter)})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_issue",
-		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers, and frontier/blocked flags. Use this to zoom into a Wayfinder ticket.",
+		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), and frontier/blocked flags. Use this to zoom into a Wayfinder ticket.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Get(in.ID)
 		if err != nil {
@@ -118,9 +119,9 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_frontier",
-		Description: "List takeable Wayfinder tickets: open, unassigned, every blocker closed. Pass parentId of the map to scope to that map's children. First result in id order is the next ticket.",
+		Description: "List takeable Wayfinder tickets: open, unassigned, every blocker closed, not a map. Pass parentId of the map to scope to that map's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in frontierInput) (*mcp.CallToolResult, any, error) {
-		return textResult(st.Frontier(in.ParentID))
+		return textResult(frontierPayload(st.Frontier(in.ParentID)))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -236,6 +237,14 @@ type resolveInput struct {
 
 type wipeInput struct {
 	Confirm bool `json:"confirm" jsonschema:"must be true to wipe"`
+}
+
+func frontierPayload(issues []model.IssueView) map[string]any {
+	var next any
+	if len(issues) > 0 {
+		next = issues[0]
+	}
+	return map[string]any{"next": next, "issues": issues}
 }
 
 func optString(s string) *string {

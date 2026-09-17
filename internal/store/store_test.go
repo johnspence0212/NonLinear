@@ -72,6 +72,16 @@ func TestFrontierBlockedClaimedClosed(t *testing.T) {
 	if !got.Blocked || got.Frontier {
 		t.Fatalf("B should be blocked: %+v", got)
 	}
+	if len(got.Blockers) != 1 || got.Blockers[0].ID != a.ID {
+		t.Fatalf("B blockers: %+v", got.Blockers)
+	}
+	blocker, err := s.Get(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(blocker.Blocks) != 1 || blocker.Blocks[0].ID != b.ID {
+		t.Fatalf("A should block B: %+v", blocker.Blocks)
+	}
 
 	if _, err := s.Claim(a.ID, "cursor"); err != nil {
 		t.Fatal(err)
@@ -98,6 +108,38 @@ func TestFrontierBlockedClaimedClosed(t *testing.T) {
 	}
 	if len(closed.Comments) != 1 {
 		t.Fatalf("expected resolution comment, got %d", len(closed.Comments))
+	}
+}
+
+func TestGlobalFrontierExcludesMapsAndClosed(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	done, err := s.Create(CreateIssue{Title: "Already answered", Labels: []string{"wayfinder:research"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next, err := s.Create(CreateIssue{Title: "Next question", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Resolve(done.ID, "cursor", "Done."); err != nil {
+		t.Fatal(err)
+	}
+
+	front := s.Frontier(nil)
+	if len(front) != 1 || front[0].ID != next.ID {
+		t.Fatalf("expected only next ticket, got %+v", ids(front))
+	}
+	got, err := s.Get(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Frontier {
+		t.Fatalf("map should not be frontier: %+v", got)
 	}
 }
 
