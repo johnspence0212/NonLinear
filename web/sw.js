@@ -1,5 +1,5 @@
-const CACHE = "nonlinear-v13";
-const STATIC = ["/", "/app.css?v=0.2.6", "/app.js?v=0.2.6", "/md.js?v=0.2.6", "/manifest.json", "/icon-192.png", "/icon-512.png"];
+const CACHE = "nonlinear-v14";
+const STATIC = ["/", "/app.css?v=0.2.7", "/app.js?v=0.2.7", "/md.js?v=0.2.7", "/manifest.json", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((c) => c.addAll(STATIC)).then(() => self.skipWaiting()));

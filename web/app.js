@@ -508,14 +508,19 @@ async function renderMap(id) {
   syncChrome();
 }
 
+function mdPreviewHTML(src) {
+  const text = String(src ?? "").trim();
+  return text ? renderMarkdown(text) : `<span class="muted">nothing to preview</span>`;
+}
+
 function mdEditorHTML(id, placeholder, value = "") {
   return `<div class="md-editor" id="${id}">
     <div class="subnav md-tabs">
-      <button type="button" data-md-tab="write" class="active">write</button>
-      <button type="button" data-md-tab="preview">preview</button>
+      <button type="button" data-md-tab="write">write</button>
+      <button type="button" data-md-tab="preview" class="active">preview</button>
     </div>
-    <textarea name="body" placeholder="${placeholder}">${esc(value)}</textarea>
-    <div class="body md-preview" hidden></div>
+    <textarea name="body" placeholder="${placeholder}" hidden>${esc(value)}</textarea>
+    <div class="body md-preview">${mdPreviewHTML(value)}</div>
   </div>`;
 }
 
@@ -523,21 +528,18 @@ function bindMdEditor(root) {
   if (!root) return;
   const ta = root.querySelector("textarea");
   const preview = root.querySelector(".md-preview");
+  const show = (tab) => {
+    root.querySelectorAll("[data-md-tab]").forEach((b) => b.classList.toggle("active", b.dataset.mdTab === tab));
+    const previewing = tab === "preview";
+    ta.hidden = previewing;
+    preview.hidden = !previewing;
+    if (previewing) preview.innerHTML = mdPreviewHTML(ta.value);
+    else ta.focus();
+  };
   root.querySelectorAll("[data-md-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => {
-      const tab = btn.dataset.mdTab;
-      root.querySelectorAll("[data-md-tab]").forEach((b) => b.classList.toggle("active", b === btn));
-      const previewing = tab === "preview";
-      ta.hidden = previewing;
-      preview.hidden = !previewing;
-      if (previewing) {
-        const src = ta.value.trim();
-        preview.innerHTML = src ? renderMarkdown(src) : `<span class="muted">nothing to preview</span>`;
-      } else {
-        ta.focus();
-      }
-    });
+    btn.addEventListener("click", () => show(btn.dataset.mdTab));
   });
+  show("preview");
 }
 
 function commentEdited(c) {
@@ -604,11 +606,6 @@ function startCommentEdit(issue, comment) {
       await renderIssue(issue.id);
     }
   });
-  const ta = el.querySelector("textarea");
-  if (ta) {
-    ta.focus();
-    ta.setSelectionRange(ta.value.length, ta.value.length);
-  }
 }
 
 async function renderIssue(id) {
