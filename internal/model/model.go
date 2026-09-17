@@ -26,11 +26,11 @@ var SeedLabels = []string{
 }
 
 type Comment struct {
-	ID        string    `json:"id"`
-	Author    string    `json:"author"`
-	Body      string    `json:"body"`
-	CreatedAt time.Time `json:"createdAt"`
-	UpdatedAt time.Time `json:"updatedAt,omitempty"`
+	ID        string     `json:"id"`
+	Author    string     `json:"author"`
+	Body      string     `json:"body"`
+	CreatedAt time.Time  `json:"createdAt"`
+	UpdatedAt *time.Time `json:"updatedAt,omitempty"`
 }
 
 type Issue struct {

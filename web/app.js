@@ -540,9 +540,15 @@ function bindMdEditor(root) {
   });
 }
 
+function commentEdited(c) {
+  if (!c.updatedAt) return false;
+  const t = Date.parse(c.updatedAt);
+  return Number.isFinite(t) && new Date(t).getUTCFullYear() > 1970;
+}
+
 function commentStamp(c) {
   const created = esc(c.createdAt).slice(0, 19).replace("T", " ");
-  const edited = c.updatedAt && String(c.updatedAt) !== String(c.createdAt) ? " · edited" : "";
+  const edited = commentEdited(c) ? " · edited" : "";
   return `${esc(c.author)} · ${created}${edited}`;
 }
 

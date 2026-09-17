@@ -410,7 +410,7 @@ func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, 
 			continue
 		}
 		c.Body = body
-		c.UpdatedAt = now
+		c.UpdatedAt = &now
 		issue.Comments[i] = c
 		found = true
 		break

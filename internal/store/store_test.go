@@ -258,7 +258,7 @@ func TestUpdateComment(t *testing.T) {
 	if len(got.Comments) != 1 || got.Comments[0].Body != "edited **body**" {
 		t.Fatalf("updated: %+v", got.Comments)
 	}
-	if got.Comments[0].UpdatedAt.IsZero() {
+	if got.Comments[0].UpdatedAt == nil || got.Comments[0].UpdatedAt.IsZero() {
 		t.Fatal("expected updatedAt")
 	}
 	if _, err := s.UpdateComment(issue.ID, "missing", "nope"); err == nil {
