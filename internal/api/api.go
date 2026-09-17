@@ -24,6 +24,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/issues/{id}", h.get)
 	mux.HandleFunc("PATCH /api/issues/{id}", h.update)
 	mux.HandleFunc("POST /api/issues/{id}/comments", h.comment)
+	mux.HandleFunc("PATCH /api/issues/{id}/comments/{cid}", h.updateComment)
 	mux.HandleFunc("PUT /api/issues/{id}/blocked-by", h.blockedBy)
 	mux.HandleFunc("POST /api/issues/{id}/claim", h.claim)
 	mux.HandleFunc("POST /api/issues/{id}/resolve", h.resolve)
@@ -177,6 +178,25 @@ func (h *Handler) comment(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	issue, err := h.Store.AddComment(id, body.Author, body.Body)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
+}
+
+func (h *Handler) updateComment(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Body string `json:"body"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	issue, err := h.Store.UpdateComment(id, r.PathValue("cid"), body.Body)
 	if err != nil {
 		writeStoreError(w, err)
 		return

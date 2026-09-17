@@ -14,15 +14,17 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="stylesheet" href="/app.css?v=0.2.5" />
+    <link rel="stylesheet" href="/app.css?v=0.2.6" />
   </head>
   <body>
     <div id="app">
       <header>
+        <button type="button" id="back" class="hdr-btn" hidden title="back" aria-label="back">← <span class="lbl">back</span></button>
         <a class="brand" href="#/"><img src="/icon-192.png" alt="nonlinear" /><span>nonlinear</span></a>
         <form id="search-form" role="search">
           <input id="global-search" placeholder="search…  ( / )" autocomplete="off" />
         </form>
+        <button type="button" id="refresh" class="hdr-btn" title="refresh" aria-label="refresh">↻ <span class="lbl">refresh</span></button>
         <div class="swatches" role="radiogroup" aria-label="color">
           <button type="button" class="swatch" data-theme="orange" title="orange" aria-label="orange"></button>
           <button type="button" class="swatch" data-theme="matrix" title="matrix green" aria-label="matrix green"></button>
@@ -43,13 +45,13 @@
         <aside id="rail"></aside>
       </div>
       <footer>
-        <span>j/k move · enter open · esc back · / search</span>
+        <span>j/k move · enter open · esc back · r refresh · / search</span>
         <span id="counts" class="foot-counts"></span>
         <button id="install" hidden>install window</button>
         <span class="foot-brand">nonlinear <span id="version"></span></span>
       </footer>
     </div>
-    <script src="/md.js?v=0.2.5"></script>
-    <script src="/app.js?v=0.2.5"></script>
+    <script src="/md.js?v=0.2.6"></script>
+    <script src="/app.js?v=0.2.6"></script>
   </body>
 </html>

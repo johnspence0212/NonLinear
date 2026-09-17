@@ -391,6 +391,41 @@ func (s *Store) AddComment(id int, author, body string) (model.IssueView, error)
 	return model.View(issue, s.byIDLocked()), nil
 }
 
+func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx, issue, ok := s.findIndexLocked(id)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	body = strings.TrimSpace(body)
+	if body == "" {
+		return model.IssueView{}, fmt.Errorf("%w: comment body is required", ErrInvalid)
+	}
+	commentID = strings.TrimSpace(commentID)
+	found := false
+	now := time.Now().UTC()
+	for i, c := range issue.Comments {
+		if c.ID != commentID {
+			continue
+		}
+		c.Body = body
+		c.UpdatedAt = now
+		issue.Comments[i] = c
+		found = true
+		break
+	}
+	if !found {
+		return model.IssueView{}, fmt.Errorf("%w: comment", ErrNotFound)
+	}
+	issue.UpdatedAt = now
+	s.db.Issues[idx] = issue
+	if err := s.saveLocked(); err != nil {
+		return model.IssueView{}, err
+	}
+	return model.View(issue, s.byIDLocked()), nil
+}
+
 func (s *Store) Claim(id int, assignee string) (model.IssueView, error) {
 	assignee = strings.TrimSpace(assignee)
 	if assignee == "" {

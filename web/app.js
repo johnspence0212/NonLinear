@@ -8,6 +8,7 @@ const state = {
   labels: [],
   version: "",
   dataPath: "",
+  issueBackHref: "#/",
 };
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -131,23 +132,6 @@ function relationBox(title, items, empty) {
   );
 }
 
-function railRelLine(issue) {
-  const m = mark(issue);
-  return `<a class="rel" href="${hrefFor(issue)}">
-    <span class="mark ${m.cls}">${m.ch}</span>
-    <span class="rel-title">${esc(issue.title)}</span>
-  </a>`;
-}
-
-function selectedBlockersHTML(issue) {
-  if (!issue) return "";
-  const blockers = sortRelations(issue.blockers);
-  return box(
-    `<strong>blocked by</strong><span>${esc(issue.identifier)}</span>`,
-    blockers.map(railRelLine).join("") || `<div class="empty">not blocked</div>`
-  );
-}
-
 function esc(s) {
   return String(s ?? "")
     .replaceAll("&", "&amp;")
@@ -218,18 +202,24 @@ async function refreshStats() {
   $("#counts").innerHTML = `<b>${state.stats.open}</b> open tickets · <b class="take">${state.stats.frontier}</b> frontier`;
 }
 
+function railLines(rows) {
+  return `<div class="pad">${rows
+    .map(([k, v]) => `<div class="rail-line">${k} <b>${v}</b></div>`)
+    .join("")}</div>`;
+}
+
 function renderRail(extraHTML = "") {
   const s = state.stats;
   rail.innerHTML =
     box(
       "<strong>this tracker</strong>",
-      `<div class="box-b pad">
-        <div class="rail-line">open <b>${s.open}</b></div>
-        <div class="rail-line">frontier <b>${s.frontier}</b></div>
-        <div class="rail-line">blocked <b>${s.blocked}</b></div>
-        <div class="rail-line">maps <b>${s.maps}</b></div>
-        <div class="rail-line">closed <b>${s.closed}</b></div>
-      </div>`
+      railLines([
+        ["open", s.open],
+        ["frontier", s.frontier],
+        ["blocked", s.blocked],
+        ["maps", s.maps],
+        ["closed", s.closed],
+      ])
     ) +
     box(
       "<strong>labels</strong>",
@@ -423,6 +413,28 @@ async function renderHome() {
   syncChrome();
 }
 
+function goBack() {
+  const r = route();
+  if (r.name === "issue") {
+    location.hash = state.issueBackHref || "#/";
+    return;
+  }
+  if (r.name === "map") {
+    state.filter = "maps";
+    localStorage.setItem("nl-filter", "maps");
+    if (location.hash.replace(/^#/, "") === "/") paint();
+    else location.hash = "#/";
+    return;
+  }
+  if (r.name === "list") {
+    state.filter = "home";
+    localStorage.setItem("nl-filter", "home");
+    paint();
+    return;
+  }
+  location.hash = "#/";
+}
+
 function syncChrome() {
   const r = route();
   document.querySelectorAll("nav button").forEach((b) => {
@@ -433,6 +445,11 @@ function syncChrome() {
     const onMap = r.name === "map" && b.dataset.filter === "maps";
     b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
   });
+  const back = $("#back");
+  if (back) {
+    const home = r.name === "list" && state.filter === "home";
+    back.hidden = home;
+  }
 }
 
 async function renderMap(id) {
@@ -455,7 +472,6 @@ async function renderMap(id) {
     ${box(
       `<strong>${esc(map.identifier)}</strong>${stamp(map.state === "closed" ? "closed" : "open", map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
-        <div class="kicker"><a href="#/">← maps</a></div>
         <h1>${esc(map.title)}</h1>
         <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
         <div class="actions">
@@ -481,15 +497,112 @@ async function renderMap(id) {
   renderRail(
     box(
       "<strong>this map</strong>",
-      `<div class="box-b pad">
-        <div class="rail-line">children <b>${kids.length}</b></div>
-        <div class="rail-line">open <b>${kids.filter((c) => c.state === "open").length}</b></div>
-        <div class="rail-line">frontier <b>${kids.filter((c) => c.frontier).length}</b></div>
-        <div class="rail-line">blocked <b>${kids.filter((c) => c.blocked).length}</b></div>
-      </div>`
-    ) + `<div id="selected-rels">${selectedBlockersHTML(state.issues[state.selected])}</div>`
+      railLines([
+        ["children", kids.length],
+        ["open", kids.filter((c) => c.state === "open").length],
+        ["frontier", kids.filter((c) => c.frontier).length],
+        ["blocked", kids.filter((c) => c.blocked).length],
+      ])
+    )
   );
   syncChrome();
+}
+
+function mdEditorHTML(id, placeholder, value = "") {
+  return `<div class="md-editor" id="${id}">
+    <div class="subnav md-tabs">
+      <button type="button" data-md-tab="write" class="active">write</button>
+      <button type="button" data-md-tab="preview">preview</button>
+    </div>
+    <textarea name="body" placeholder="${placeholder}">${esc(value)}</textarea>
+    <div class="body md-preview" hidden></div>
+  </div>`;
+}
+
+function bindMdEditor(root) {
+  if (!root) return;
+  const ta = root.querySelector("textarea");
+  const preview = root.querySelector(".md-preview");
+  root.querySelectorAll("[data-md-tab]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const tab = btn.dataset.mdTab;
+      root.querySelectorAll("[data-md-tab]").forEach((b) => b.classList.toggle("active", b === btn));
+      const previewing = tab === "preview";
+      ta.hidden = previewing;
+      preview.hidden = !previewing;
+      if (previewing) {
+        const src = ta.value.trim();
+        preview.innerHTML = src ? renderMarkdown(src) : `<span class="muted">nothing to preview</span>`;
+      } else {
+        ta.focus();
+      }
+    });
+  });
+}
+
+function commentStamp(c) {
+  const created = esc(c.createdAt).slice(0, 19).replace("T", " ");
+  const edited = c.updatedAt && String(c.updatedAt) !== String(c.createdAt) ? " · edited" : "";
+  return `${esc(c.author)} · ${created}${edited}`;
+}
+
+function commentHTML(c) {
+  return `<div class="comment" data-comment-id="${esc(c.id)}">
+    <div class="who">
+      <span>${commentStamp(c)}</span>
+      <button type="button" class="edit-c" data-edit-comment="${esc(c.id)}">edit</button>
+    </div>
+    <div class="text body">${c.body ? renderMarkdown(c.body) : `<span class="muted">empty</span>`}</div>
+  </div>`;
+}
+
+function issueLinksBox(issue) {
+  if (issue.parent && isMap(issue.parent)) {
+    return box(
+      "<strong>links</strong>",
+      railLines([["map", `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.title)}</a>`]])
+    );
+  }
+  if (issue.parent) {
+    return box(
+      "<strong>links</strong>",
+      railLines([["parent", `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.title)}</a>`]])
+    );
+  }
+  return box("<strong>links</strong>", railLines([["map", "inbox"]]));
+}
+
+function startCommentEdit(issue, comment) {
+  const el = main.querySelector(`[data-comment-id="${comment.id}"]`);
+  if (!el) return;
+  el.dataset.commentEditing = "1";
+  el.innerHTML = `${mdEditorHTML("edit-comment", "comment markdown", comment.body || "")}
+    <div class="actions">
+      <button type="button" data-save-comment>save</button>
+      <button type="button" data-cancel-comment>cancel</button>
+    </div>`;
+  bindMdEditor(el.querySelector(".md-editor"));
+  el.querySelector("[data-cancel-comment]").addEventListener("click", () => renderIssue(issue.id));
+  el.querySelector("[data-save-comment]").addEventListener("click", async () => {
+    const body = el.querySelector("textarea").value.trim();
+    if (!body) return;
+    try {
+      await api(`/api/issues/${issue.id}/comments/${encodeURIComponent(comment.id)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ body }),
+      });
+      state.error = "";
+      await renderIssue(issue.id);
+    } catch (err) {
+      state.error = err.message;
+      await renderIssue(issue.id);
+    }
+  });
+  const ta = el.querySelector("textarea");
+  if (ta) {
+    ta.focus();
+    ta.setSelectionRange(ta.value.length, ta.value.length);
+  }
 }
 
 async function renderIssue(id) {
@@ -505,18 +618,9 @@ async function renderIssue(id) {
     location.replace(`#/map/${issue.id}`);
     return;
   }
+  state.issueBackHref = backHref(issue);
   const closed = issue.state === "closed";
-  const comments = (issue.comments || [])
-    .map(
-      (c) => `<div class="comment">
-        <div class="who">${esc(c.author)} · ${esc(c.createdAt).slice(0, 19).replace("T", " ")}</div>
-        <div class="text">${renderMarkdown(c.body)}</div>
-      </div>`
-    )
-    .join("");
-  const parent = issue.parent
-    ? `<a href="${hrefFor(issue.parent)}">${esc(issue.parent.title)}</a>`
-    : "—";
+  const comments = (issue.comments || []).map(commentHTML).join("");
   const blockers = sortRelations(issue.blockers);
   const blocks = sortRelations(issue.blocks);
   main.innerHTML = `
@@ -524,7 +628,6 @@ async function renderIssue(id) {
     ${box(
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
       `<div class="box-b pad ${closed ? "is-closed" : ""}" id="issue-head">
-        <div class="kicker"><a href="${backHref(issue)}">←</a></div>
         <h1>${esc(issue.title)}</h1>
         <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no labels</span>`}</div>
         <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty body</span>`}</div>
@@ -542,31 +645,20 @@ async function renderIssue(id) {
     ${box(
       "<strong>comments</strong>",
       `${comments || `<div class="empty">none</div>`}
-       <form id="comment" class="box-b pad">
-         <textarea name="body" placeholder="comment · ctrl+enter"></textarea>
+       <form id="comment" class="pad">
+         ${mdEditorHTML("new-comment", "comment · markdown · ctrl+enter")}
          <div class="actions"><button type="submit">add comment</button></div>
        </form>`
     )}`;
-  renderRail(
-    box(
-      "<strong>links</strong>",
-      `<div class="box-b pad">
-        <div class="rail-line">parent <b>${parent}</b></div>
-        <div class="rail-line">project <b>${esc(issue.project)}</b></div>
-      </div>`
-    ) +
-      box(
-        `<strong>blocked by</strong><span>${relCounts(blockers)}</span>`,
-        blockers.map(railRelLine).join("") || `<div class="empty">not blocked</div>`
-      ) +
-      (blocks.length
-        ? box(
-            `<strong>blocks</strong><span>${relCounts(blocks)}</span>`,
-            blocks.map(railRelLine).join("")
-          )
-        : "")
-  );
+  renderRail(issueLinksBox(issue));
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
+  main.querySelectorAll("[data-edit-comment]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const comment = (issue.comments || []).find((c) => c.id === btn.dataset.editComment);
+      if (comment) startCommentEdit(issue, comment);
+    });
+  });
+  bindMdEditor($("#new-comment"));
   $("#comment").addEventListener("submit", async (e) => {
     e.preventDefault();
     const body = e.target.body.value.trim();
@@ -809,6 +901,15 @@ document.getElementById("global-search").addEventListener("keydown", (e) => {
   }
 });
 
+document.getElementById("back").addEventListener("click", (e) => {
+  e.preventDefault();
+  goBack();
+});
+
+document.getElementById("refresh").addEventListener("click", () => {
+  paint();
+});
+
 document.getElementById("app").addEventListener("click", (e) => {
   const t = e.target.closest("[data-tag]");
   if (!t) return;
@@ -821,16 +922,25 @@ document.getElementById("app").addEventListener("click", (e) => {
 
 function highlightSelected() {
   document.querySelectorAll("main .row[data-nav]").forEach((el, i) => el.classList.toggle("selected", i === state.selected));
-  const slot = $("#selected-rels");
-  if (slot) slot.innerHTML = selectedBlockersHTML(state.issues[state.selected]);
 }
 
 window.addEventListener("hashchange", paint);
 window.addEventListener("keydown", (e) => {
   if (e.target.matches("input, textarea")) return;
   const r = route();
+  if (e.key === "r") {
+    e.preventDefault();
+    paint();
+    return;
+  }
   if (r.name === "issue") {
-    if (e.key === "Escape") history.back();
+    if (e.key === "Escape") {
+      if (main.querySelector("[data-comment-editing], [data-save]")) {
+        paint();
+        return;
+      }
+      goBack();
+    }
     return;
   }
   if (e.key === "j") {
@@ -849,7 +959,7 @@ window.addEventListener("keydown", (e) => {
     const input = $("#global-search");
     if (input) input.focus();
   }
-  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings" || r.name === "search")) location.hash = "#/";
+  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings" || r.name === "search")) goBack();
 });
 
 const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };

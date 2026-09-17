@@ -85,6 +85,34 @@ func TestIssueLifecycle(t *testing.T) {
 	}
 }
 
+func TestUpdateComment(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	issue := postJSON(t, mux, "/api/issues", map[string]any{"title": "Ticket"})
+	id := itoa(issue["id"])
+	withComment := postJSON(t, mux, "/api/issues/"+id+"/comments", map[string]any{
+		"author": "me",
+		"body":   "first draft",
+	})
+	comments, _ := withComment["comments"].([]any)
+	if len(comments) != 1 {
+		t.Fatalf("comments: %v", withComment)
+	}
+	cid := comments[0].(map[string]any)["id"].(string)
+	updated := patchJSON(t, mux, "/api/issues/"+id+"/comments/"+cid, map[string]any{
+		"body": "now markdown **preview**",
+	})
+	got := updated["comments"].([]any)[0].(map[string]any)
+	if got["body"] != "now markdown **preview**" {
+		t.Fatalf("body: %v", got)
+	}
+}
+
 func TestWipeRequiresConfirm(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {
@@ -110,6 +138,23 @@ func postJSON(t *testing.T, h http.Handler, path string, body any) map[string]an
 	h.ServeHTTP(rec, req)
 	if rec.Code >= 300 {
 		t.Fatalf("%s %s -> %d %s", http.MethodPost, path, rec.Code, rec.Body.String())
+	}
+	var out map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {
+		t.Fatal(err)
+	}
+	return out
+}
+
+func patchJSON(t *testing.T, h http.Handler, path string, body any) map[string]any {
+	t.Helper()
+	raw, _ := json.Marshal(body)
+	req := httptest.NewRequest(http.MethodPatch, path, bytes.NewReader(raw))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+	if rec.Code >= 300 {
+		t.Fatalf("PATCH %s -> %d %s", path, rec.Code, rec.Body.String())
 	}
 	var out map[string]any
 	if err := json.Unmarshal(rec.Body.Bytes(), &out); err != nil {

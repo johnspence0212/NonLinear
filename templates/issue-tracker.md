@@ -21,7 +21,7 @@ The UI is `http://localhost:3333`. Issue identity is the numeric `id`. Display n
 - **Create an issue**: MCP `create_issue` with `title` and markdown `body`. Optional `labels`, `parentId`, `project`.
 - **Read an issue**: MCP `get_issue` with `id`. Returns body, comments, children, `blockers` (what this waits on), `blocks` (what waits on this), and `frontier` / `blocked` flags.
 - **List issues**: MCP `list_issues`. Filters: `state` (`open`/`closed`), `labels` (AND), `parentId`, `assignee` (`unassigned` for unclaimed), `project`, `query`, `frontier`.
-- **Comment**: MCP `add_comment` with `id` and `body`.
+- **Comment**: MCP `add_comment` with `id` and markdown `body`. Edit later with `update_comment` (`commentId` + `body`).
 - **Labels**: pass `labels` on `create_issue` / `update_issue`. Canonical triage strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 - **Close**: MCP `update_issue` with `state: "closed"`, or `resolve_issue` (comment + close).
 

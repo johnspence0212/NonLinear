@@ -237,6 +237,38 @@ func TestDeleteMissing(t *testing.T) {
 	}
 }
 
+func TestUpdateComment(t *testing.T) {
+	s := testStore(t)
+	issue, err := s.Create(CreateIssue{Title: "Ticket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	added, err := s.AddComment(issue.ID, "me", "first **draft**")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(added.Comments) != 1 {
+		t.Fatalf("comments: %+v", added.Comments)
+	}
+	cid := added.Comments[0].ID
+	got, err := s.UpdateComment(issue.ID, cid, "edited **body**")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Comments) != 1 || got.Comments[0].Body != "edited **body**" {
+		t.Fatalf("updated: %+v", got.Comments)
+	}
+	if got.Comments[0].UpdatedAt.IsZero() {
+		t.Fatal("expected updatedAt")
+	}
+	if _, err := s.UpdateComment(issue.ID, "missing", "nope"); err == nil {
+		t.Fatal("expected missing comment")
+	}
+	if _, err := s.UpdateComment(issue.ID, cid, "  "); err == nil {
+		t.Fatal("expected empty body error")
+	}
+}
+
 func ids(views []model.IssueView) []int {
 	out := make([]int, len(views))
 	for i, v := range views {

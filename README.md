@@ -98,7 +98,7 @@ The map UI shows children as a tree: `*` takeable, `.` blocked, `@` claimed, `x`
 
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `set_blocked_by`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `wipe_db` (`confirm: true`).
 
 `GET /api/health` returns `{ ok, version, data, issues }` so a later client can detect an update. The UI footer and **settings** show the same version. Wipe the database from settings (two clicks). Delete a map from the map view; children go with it.
 
@@ -119,4 +119,4 @@ The header search (`/`) matches identifier, title, and body across maps and tick
 
 ## Keyboard (UI)
 
-`j` / `k` move, `Enter` open, `Esc` back, `/` focus search.
+`j` / `k` move, `Enter` open, `Esc` back, `r` refresh, `/` focus search.

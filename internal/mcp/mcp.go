@@ -107,6 +107,17 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update_comment",
+		Description: "Edit an existing comment by comment id. Body is markdown.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateCommentInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.UpdateComment(in.ID, in.CommentID, in.Body)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_blocked_by",
 		Description: "Replace native blocked-by edges for an issue. Wayfinder second pass: after creating child tickets, set each ticket's blockers by issue id. A ticket is unblocked when every blocker is closed. The frontier is open + unblocked + unassigned children.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in blockedInput) (*mcp.CallToolResult, any, error) {
@@ -213,6 +224,12 @@ type commentInput struct {
 	ID     int    `json:"id" jsonschema:"issue id"`
 	Body   string `json:"body" jsonschema:"comment markdown"`
 	Author string `json:"author,omitempty"`
+}
+
+type updateCommentInput struct {
+	ID        int    `json:"id" jsonschema:"issue id"`
+	CommentID string `json:"commentId" jsonschema:"id of the comment to edit"`
+	Body      string `json:"body" jsonschema:"updated markdown body"`
 }
 
 type blockedInput struct {
