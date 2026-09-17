@@ -129,6 +129,37 @@ func TestMCPCreateAndFrontier(t *testing.T) {
 		t.Fatalf("list_issues must return an issues object, got %v", listPayload)
 	}
 
+	exported, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "export_map",
+		Arguments: map[string]any{"id": parentID},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.IsError {
+		t.Fatalf("%v", exported.Content)
+	}
+	bundle := toolJSON(t, exported)
+	if bundle["kind"] != "nonlinear.map" {
+		t.Fatalf("export: %v", bundle)
+	}
+
+	imported, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "import_map",
+		Arguments: bundle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported.IsError {
+		t.Fatalf("%v", imported.Content)
+	}
+	importedPayload := toolJSON(t, imported)
+	gotMap, ok := importedPayload["map"].(map[string]any)
+	if !ok || gotMap["id"] == mapIssue["id"] {
+		t.Fatalf("import: %v", importedPayload)
+	}
+
 	wiped, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "wipe_db",
 		Arguments: map[string]any{"confirm": true},
@@ -138,6 +169,157 @@ func TestMCPCreateAndFrontier(t *testing.T) {
 	}
 	if wiped.IsError {
 		t.Fatalf("%v", wiped.Content)
+	}
+}
+
+func TestMCPLabels(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_label",
+		Arguments: map[string]any{"label": "#focus"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.IsError {
+		t.Fatalf("%v", created.Content)
+	}
+	payload := toolJSON(t, created)
+	if payload["label"] != "focus" || payload["created"] != true {
+		t.Fatalf("create_label: %v", payload)
+	}
+
+	listed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_labels", Arguments: map[string]any{}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if listed.IsError {
+		t.Fatalf("%v", listed.Content)
+	}
+	listPayload := toolJSON(t, listed)
+	found := false
+	for _, v := range listPayload["labels"].([]any) {
+		if v == "focus" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("list_labels: %v", listPayload)
+	}
+
+	issue, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_issue",
+		Arguments: map[string]any{"title": "Ticket"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if issue.IsError {
+		t.Fatalf("%v", issue.Content)
+	}
+	id := int(toolJSON(t, issue)["id"].(float64))
+	tagged, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "add_label",
+		Arguments: map[string]any{"id": id, "label": "focus"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tagged.IsError {
+		t.Fatalf("%v", tagged.Content)
+	}
+	labels, _ := toolJSON(t, tagged)["labels"].([]any)
+	if len(labels) != 1 || labels[0] != "focus" {
+		t.Fatalf("add_label: %v", toolJSON(t, tagged))
+	}
+}
+
+func TestMCPLinkedMaps(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	origin, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":  "Origin",
+			"labels": []string{"wayfinder:map"},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if origin.IsError {
+		t.Fatalf("%v", origin.Content)
+	}
+	originID := int(toolJSON(t, origin)["id"].(float64))
+
+	spawned, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":       "Spawned session",
+			"linkedMapId": originID,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spawned.IsError {
+		t.Fatalf("%v", spawned.Content)
+	}
+	spawnedJSON := toolJSON(t, spawned)
+	linked, _ := spawnedJSON["linked"].([]any)
+	if len(linked) != 1 {
+		t.Fatalf("linked: %v", spawnedJSON)
+	}
+
+	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "set_linked_maps",
+		Arguments: map[string]any{
+			"id":     originID,
+			"mapIds": []any{},
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cleared.IsError {
+		t.Fatalf("%v", cleared.Content)
+	}
+	if got, _ := toolJSON(t, cleared)["linked"].([]any); len(got) != 0 {
+		t.Fatalf("unlink: %v", toolJSON(t, cleared))
 	}
 }
 

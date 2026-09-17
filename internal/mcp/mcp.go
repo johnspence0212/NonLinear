@@ -16,8 +16,37 @@ func New(st *store.Store) *mcp.Server {
 	server := mcp.NewServer(&mcp.Implementation{Name: "nonlinear", Version: version.Version}, nil)
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_labels",
+		Description: "List every label/tag this tracker knows: seed labels (wayfinder:*, triage), catalog labels from create_label, and labels already on issues. Returns {labels:[...]}.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
+		return textResult(map[string]any{"labels": st.Labels()})
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_label",
+		Description: "Create a new label/tag in the tracker catalog so it appears in the UI even before any issue uses it. Strips a leading #. Idempotent: creating an existing label succeeds and sets created=false. To put a label on an issue, use add_label.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in labelInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.CreateLabel(in.Label)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "add_label",
+		Description: "Add a label/tag to an issue without replacing existing labels. Also records it in the catalog. Use this to tag a ticket; use create_label if you only want the tag to exist.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in addLabelInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.AddLabel(in.ID, in.Label)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_issues",
-		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (Wayfinder children of a map), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for takeable tickets. Closed issues are never takeable.",
+		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (Wayfinder children of a map), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for frontier tickets (open, unblocked, unclaimed). Closed issues are never on the frontier.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		filter := store.ListFilter{
 			State:        in.State,
@@ -36,7 +65,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_issue",
-		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), and frontier/blocked flags. Use this to zoom into a Wayfinder ticket.",
+		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), linked maps, and frontier/blocked flags. Use this to zoom into a Wayfinder ticket.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Get(in.ID)
 		if err != nil {
@@ -47,15 +76,16 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_issue",
-		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Wire blocked-by in a second pass with set_blocked_by after ids exist.",
+		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Start a new map from an existing one with linkedMapId (adds wayfinder:map and a bidirectional link; does not nest or cascade-delete). Wire blocked-by in a second pass with set_blocked_by after ids exist.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Create(store.CreateIssue{
-			Title:    in.Title,
-			Body:     in.Body,
-			Labels:   in.Labels,
-			ParentID: in.ParentID,
-			Project:  in.Project,
-			Assignee: optString(in.Assignee),
+			Title:       in.Title,
+			Body:        in.Body,
+			Labels:      in.Labels,
+			ParentID:    in.ParentID,
+			LinkedMapID: in.LinkedMapID,
+			Project:     in.Project,
+			Assignee:    optString(in.Assignee),
 		})
 		if err != nil {
 			return errResult(err)
@@ -129,8 +159,19 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "set_linked_maps",
+		Description: "Replace bidirectional links from this Wayfinder map to other maps. Both sides must be maps. Linking does not nest tickets or cascade delete. Pass mapIds=[] to unlink. To start a new map from this one, prefer create_issue with linkedMapId.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in linkedMapsInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.SetLinkedMaps(in.ID, in.MapIDs)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_frontier",
-		Description: "List takeable Wayfinder tickets: open, unassigned, every blocker closed, not a map. Pass parentId of the map to scope to that map's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
+		Description: "List frontier Wayfinder tickets: open, unassigned, every blocker closed, not a map. Pass parentId of the map to scope to that map's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in frontierInput) (*mcp.CallToolResult, any, error) {
 		return textResult(frontierPayload(st.Frontier(in.ParentID)))
 	})
@@ -169,6 +210,28 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "export_map",
+		Description: "Export one Wayfinder map and all of its child tickets as a portable JSON bundle (kind nonlinear.map). Includes comments and in-map blocked-by edges. Use this file with import_map on another tracker.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		bundle, err := st.ExportMap(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(bundle)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "import_map",
+		Description: "Import a single-map JSON bundle from export_map. Allocates new ids, remaps parent and blocked-by edges, and returns the new map. Does not overwrite existing issues; importing twice creates two maps.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in importMapInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.ImportMap(in.MapBundle)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "wipe_db",
 		Description: "Erase every issue and reset ids so the next create is NL-1. Requires confirm=true. Irreversible.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in wipeInput) (*mcp.CallToolResult, any, error) {
@@ -192,7 +255,7 @@ type listInput struct {
 	Assignee string   `json:"assignee,omitempty" jsonschema:"assignee name, or unassigned"`
 	Project  string   `json:"project,omitempty"`
 	Query    string   `json:"query,omitempty" jsonschema:"substring search on identifier, title, body"`
-	Frontier bool     `json:"frontier,omitempty" jsonschema:"if true, only takeable tickets"`
+	Frontier bool     `json:"frontier,omitempty" jsonschema:"if true, only frontier tickets: open, unblocked, unclaimed"`
 }
 
 type idInput struct {
@@ -200,12 +263,13 @@ type idInput struct {
 }
 
 type createInput struct {
-	Title    string   `json:"title" jsonschema:"issue title; refer to tickets by this name"`
-	Body     string   `json:"body,omitempty" jsonschema:"markdown body"`
-	Labels   []string `json:"labels,omitempty"`
-	ParentID *int     `json:"parentId,omitempty" jsonschema:"parent map id for child tickets"`
-	Project  string   `json:"project,omitempty"`
-	Assignee string   `json:"assignee,omitempty"`
+	Title       string   `json:"title" jsonschema:"issue title; refer to tickets by this name"`
+	Body        string   `json:"body,omitempty" jsonschema:"markdown body"`
+	Labels      []string `json:"labels,omitempty"`
+	ParentID    *int     `json:"parentId,omitempty" jsonschema:"parent map id for child tickets"`
+	LinkedMapID *int     `json:"linkedMapId,omitempty" jsonschema:"existing map to link a new map to; implies wayfinder:map"`
+	Project     string   `json:"project,omitempty"`
+	Assignee    string   `json:"assignee,omitempty"`
 }
 
 type updateInput struct {
@@ -237,6 +301,11 @@ type blockedInput struct {
 	IssueIDs []int `json:"issueIds" jsonschema:"ids of issues that block this one"`
 }
 
+type linkedMapsInput struct {
+	ID     int   `json:"id" jsonschema:"map issue id"`
+	MapIDs []int `json:"mapIds" jsonschema:"ids of maps to link; replaces the current set"`
+}
+
 type frontierInput struct {
 	ParentID *int `json:"parentId,omitempty" jsonschema:"map issue id"`
 }
@@ -252,8 +321,23 @@ type resolveInput struct {
 	Author string `json:"author,omitempty"`
 }
 
+type emptyInput struct{}
+
+type labelInput struct {
+	Label string `json:"label" jsonschema:"tag name, without a leading hash"`
+}
+
+type addLabelInput struct {
+	ID    int    `json:"id" jsonschema:"issue id"`
+	Label string `json:"label" jsonschema:"tag to add, without a leading hash"`
+}
+
 type wipeInput struct {
 	Confirm bool `json:"confirm" jsonschema:"must be true to wipe"`
+}
+
+type importMapInput struct {
+	model.MapBundle
 }
 
 func frontierPayload(issues []model.IssueView) map[string]any {

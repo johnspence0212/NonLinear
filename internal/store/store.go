@@ -40,12 +40,13 @@ type ListFilter struct {
 }
 
 type CreateIssue struct {
-	Title    string
-	Body     string
-	Labels   []string
-	ParentID *int
-	Project  string
-	Assignee *string
+	Title       string
+	Body        string
+	Labels      []string
+	ParentID    *int
+	LinkedMapID *int
+	Project     string
+	Assignee    *string
 }
 
 type UpdateIssue struct {
@@ -64,7 +65,7 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{path: path}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}}
+		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}, Labels: []string{}}
 		if err := s.saveLocked(); err != nil {
 			return nil, err
 		}
@@ -77,7 +78,7 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if len(strings.TrimSpace(string(raw))) == 0 {
-		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}}
+		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}, Labels: []string{}}
 		return s, s.saveLocked()
 	}
 	if err := json.Unmarshal(raw, &s.db); err != nil {
@@ -91,6 +92,9 @@ func Open(path string) (*Store, error) {
 	}
 	if s.db.Issues == nil {
 		s.db.Issues = []model.Issue{}
+	}
+	if s.db.Labels == nil {
+		s.db.Labels = []string{}
 	}
 	return s, nil
 }
@@ -131,6 +135,7 @@ func (s *Store) Delete(id int) (DeleteResult, error) {
 	sort.Ints(deleted)
 	for i := range kept {
 		kept[i].BlockedBy = stripIDs(kept[i].BlockedBy, drop)
+		kept[i].LinkedMaps = stripIDs(kept[i].LinkedMaps, drop)
 	}
 	s.db.Issues = kept
 	if err := s.saveLocked(); err != nil {
@@ -145,8 +150,147 @@ func (s *Store) Wipe() (int, error) {
 	defer s.mu.Unlock()
 	n := len(s.db.Issues)
 	s.db.Issues = []model.Issue{}
+	s.db.Labels = []string{}
 	s.db.NextID = 1
 	return n, s.saveLocked()
+}
+
+// ExportMap returns a portable bundle for a wayfinder map and every descendant.
+// Blocked-by edges that point outside the map are dropped.
+func (s *Store) ExportMap(id int) (model.MapBundle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	root, ok := s.findLocked(id)
+	if !ok {
+		return model.MapBundle{}, ErrNotFound
+	}
+	if !model.IsMap(root) {
+		return model.MapBundle{}, fmt.Errorf("%w: issue %d is not a map", ErrInvalid, id)
+	}
+	keep := map[int]bool{}
+	for _, did := range s.descendantsLocked(id) {
+		keep[did] = true
+	}
+	issues := make([]model.Issue, 0, len(keep))
+	for _, issue := range s.db.Issues {
+		if !keep[issue.ID] {
+			continue
+		}
+		out := model.CloneIssue(issue)
+		if issue.ID == id {
+			out.ParentID = nil
+		} else if out.ParentID != nil && !keep[*out.ParentID] {
+			rootID := id
+			out.ParentID = &rootID
+		}
+		out.BlockedBy = keepIDs(out.BlockedBy, keep)
+		out.LinkedMaps = keepIDs(out.LinkedMaps, keep)
+		issues = append(issues, out)
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].ID < issues[j].ID })
+	return model.MapBundle{
+		Kind:       model.MapBundleKind,
+		Version:    model.MapBundleVersion,
+		ExportedAt: time.Now().UTC(),
+		RootID:     id,
+		Issues:     issues,
+	}, nil
+}
+
+type ImportResult struct {
+	Map     model.IssueView `json:"map"`
+	Created []int           `json:"created"`
+}
+
+// ImportMap copies a map bundle into this tracker with new ids. Existing
+// issues are left alone. Blocked-by and parent edges remapped within the
+// bundle; the imported map is always top-level.
+func (s *Store) ImportMap(bundle model.MapBundle) (ImportResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	issues, rootOld, err := validateMapBundle(bundle)
+	if err != nil {
+		return ImportResult{}, err
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].ID < issues[j].ID })
+	idMap := make(map[int]int, len(issues))
+	for _, old := range issues {
+		idMap[old.ID] = s.db.NextID
+		s.db.NextID++
+	}
+	imported := make([]model.Issue, 0, len(issues))
+	created := make([]int, 0, len(issues))
+	rootNew := idMap[rootOld]
+	for _, old := range issues {
+		issue := model.CloneIssue(old)
+		issue.ID = idMap[old.ID]
+		issue.Identifier = fmt.Sprintf("%s-%d", s.db.Prefix, issue.ID)
+		if old.ID == rootOld {
+			issue.ParentID = nil
+			if !model.HasLabel(issue, "wayfinder:map") {
+				issue.Labels = append([]string{"wayfinder:map"}, issue.Labels...)
+			}
+		} else if issue.ParentID != nil {
+			if nid, ok := idMap[*issue.ParentID]; ok && nid != issue.ID {
+				issue.ParentID = &nid
+			} else {
+				issue.ParentID = &rootNew
+			}
+		} else {
+			issue.ParentID = &rootNew
+		}
+		blocked := make([]int, 0, len(issue.BlockedBy))
+		seen := map[int]bool{}
+		for _, bid := range issue.BlockedBy {
+			nid, ok := idMap[bid]
+			if !ok || nid == issue.ID || seen[nid] {
+				continue
+			}
+			seen[nid] = true
+			blocked = append(blocked, nid)
+		}
+		issue.BlockedBy = blocked
+		linked := make([]int, 0, len(issue.LinkedMaps))
+		seenLinked := map[int]bool{}
+		for _, lid := range issue.LinkedMaps {
+			nid, ok := idMap[lid]
+			if !ok || nid == issue.ID || seenLinked[nid] {
+				continue
+			}
+			seenLinked[nid] = true
+			linked = append(linked, nid)
+		}
+		issue.LinkedMaps = linked
+		comments := make([]model.Comment, 0, len(issue.Comments))
+		for _, c := range issue.Comments {
+			c.ID = newID()
+			if strings.TrimSpace(c.Author) == "" {
+				c.Author = "cursor"
+			}
+			comments = append(comments, c)
+		}
+		issue.Comments = comments
+		if issue.Project == "" {
+			issue.Project = model.DefaultProject
+		}
+		if issue.State != model.StateOpen && issue.State != model.StateClosed {
+			issue.State = model.StateOpen
+		}
+		imported = append(imported, issue)
+		created = append(created, issue.ID)
+	}
+	if parentCycle(imported) {
+		return ImportResult{}, ErrParentCycle
+	}
+	s.db.Issues = append(s.db.Issues, imported...)
+	if err := s.saveLocked(); err != nil {
+		return ImportResult{}, err
+	}
+	byID := s.byIDLocked()
+	return ImportResult{
+		Map:     model.View(byID[rootNew], byID),
+		Created: created,
+	}, nil
 }
 
 func (s *Store) descendantsLocked(id int) []int {
@@ -183,24 +327,178 @@ func stripIDs(ids []int, drop map[int]bool) []int {
 	return out
 }
 
+func keepIDs(ids []int, keep map[int]bool) []int {
+	out := []int{}
+	for _, id := range ids {
+		if keep[id] {
+			out = append(out, id)
+		}
+	}
+	return out
+}
+
+func validateMapBundle(bundle model.MapBundle) ([]model.Issue, int, error) {
+	if bundle.Kind != model.MapBundleKind {
+		return nil, 0, fmt.Errorf("%w: not a nonlinear map bundle", ErrInvalid)
+	}
+	if bundle.Version != 0 && bundle.Version != model.MapBundleVersion {
+		return nil, 0, fmt.Errorf("%w: unsupported map bundle version %d", ErrInvalid, bundle.Version)
+	}
+	if len(bundle.Issues) == 0 {
+		return nil, 0, fmt.Errorf("%w: map bundle has no issues", ErrInvalid)
+	}
+	seen := map[int]bool{}
+	issues := make([]model.Issue, 0, len(bundle.Issues))
+	maps := []int{}
+	for _, issue := range bundle.Issues {
+		if issue.ID < 1 {
+			return nil, 0, fmt.Errorf("%w: issue id is required", ErrInvalid)
+		}
+		if seen[issue.ID] {
+			return nil, 0, fmt.Errorf("%w: duplicate issue id %d", ErrInvalid, issue.ID)
+		}
+		if strings.TrimSpace(issue.Title) == "" {
+			return nil, 0, fmt.Errorf("%w: title is required", ErrInvalid)
+		}
+		seen[issue.ID] = true
+		cloned := model.CloneIssue(issue)
+		if model.IsMap(cloned) {
+			maps = append(maps, cloned.ID)
+		}
+		issues = append(issues, cloned)
+	}
+	root := bundle.RootID
+	if root == 0 {
+		if len(maps) == 1 {
+			root = maps[0]
+		} else {
+			return nil, 0, fmt.Errorf("%w: rootId is required", ErrInvalid)
+		}
+	}
+	if !seen[root] {
+		return nil, 0, fmt.Errorf("%w: root %d", ErrNotFound, root)
+	}
+	return issues, root, nil
+}
+
+func parentCycle(issues []model.Issue) bool {
+	byID := make(map[int]model.Issue, len(issues))
+	for _, issue := range issues {
+		byID[issue.ID] = issue
+	}
+	for _, issue := range issues {
+		seen := map[int]bool{issue.ID: true}
+		cur := issue.ParentID
+		for cur != nil {
+			if seen[*cur] {
+				return true
+			}
+			seen[*cur] = true
+			next, ok := byID[*cur]
+			if !ok {
+				break
+			}
+			cur = next.ParentID
+		}
+	}
+	return false
+}
+
 func (s *Store) Labels() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.labelsLocked()
+}
+
+type LabelResult struct {
+	Label   string   `json:"label"`
+	Created bool     `json:"created"`
+	Labels  []string `json:"labels"`
+}
+
+// CreateLabel records a tag in the tracker catalog so it appears in the
+// label list even when no issue uses it yet. Idempotent.
+func (s *Store) CreateLabel(name string) (LabelResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	label, err := normalizeLabel(name)
+	if err != nil {
+		return LabelResult{}, err
+	}
+	created := s.ensureLabelLocked(label)
+	if created {
+		if err := s.saveLocked(); err != nil {
+			return LabelResult{}, err
+		}
+	}
+	return LabelResult{Label: label, Created: created, Labels: s.labelsLocked()}, nil
+}
+
+// AddLabel appends a tag to an issue without replacing existing labels.
+// The tag is also recorded in the catalog.
+func (s *Store) AddLabel(id int, name string) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	label, err := normalizeLabel(name)
+	if err != nil {
+		return model.IssueView{}, err
+	}
+	idx, issue, ok := s.findIndexLocked(id)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	s.ensureLabelLocked(label)
+	if !model.HasLabel(issue, label) {
+		issue.Labels = append(append([]string{}, issue.Labels...), label)
+		issue.UpdatedAt = time.Now().UTC()
+		s.db.Issues[idx] = issue
+	}
+	if err := s.saveLocked(); err != nil {
+		return model.IssueView{}, err
+	}
+	return model.View(issue, s.byIDLocked()), nil
+}
+
+func (s *Store) labelsLocked() []string {
 	seen := map[string]bool{}
 	out := append([]string{}, model.SeedLabels...)
 	for _, l := range model.SeedLabels {
 		seen[l] = true
 	}
+	for _, l := range s.db.Labels {
+		if l == "" || seen[l] {
+			continue
+		}
+		seen[l] = true
+		out = append(out, l)
+	}
 	for _, issue := range s.db.Issues {
 		for _, l := range issue.Labels {
-			if !seen[l] {
-				seen[l] = true
-				out = append(out, l)
+			if l == "" || seen[l] {
+				continue
 			}
+			seen[l] = true
+			out = append(out, l)
 		}
 	}
 	sort.Strings(out[len(model.SeedLabels):])
 	return out
+}
+
+func (s *Store) ensureLabelLocked(label string) bool {
+	for _, l := range model.SeedLabels {
+		if l == label {
+			return false
+		}
+	}
+	for _, l := range s.db.Labels {
+		if l == label {
+			return false
+		}
+	}
+	s.db.Labels = append(s.db.Labels, label)
+	sort.Strings(s.db.Labels)
+	return true
 }
 
 func (s *Store) List(filter ListFilter) []model.IssueView {
@@ -237,8 +535,24 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		return model.IssueView{}, fmt.Errorf("%w: title is required", ErrInvalid)
 	}
 	if in.ParentID != nil {
+		if in.LinkedMapID != nil {
+			return model.IssueView{}, fmt.Errorf("%w: linked maps cannot have a parent ticket", ErrInvalid)
+		}
 		if _, ok := s.findLocked(*in.ParentID); !ok {
 			return model.IssueView{}, fmt.Errorf("%w: parent %d", ErrNotFound, *in.ParentID)
+		}
+	}
+	labels := uniqueStrings(in.Labels)
+	if in.LinkedMapID != nil {
+		target, ok := s.findLocked(*in.LinkedMapID)
+		if !ok {
+			return model.IssueView{}, fmt.Errorf("%w: map %d", ErrNotFound, *in.LinkedMapID)
+		}
+		if !model.IsMap(target) {
+			return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map", ErrInvalid, *in.LinkedMapID)
+		}
+		if !model.HasLabel(model.Issue{Labels: labels}, "wayfinder:map") {
+			labels = append([]string{"wayfinder:map"}, labels...)
 		}
 	}
 	now := time.Now().UTC()
@@ -255,20 +569,26 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		Title:      title,
 		Body:       in.Body,
 		State:      model.StateOpen,
-		Labels:     uniqueStrings(in.Labels),
+		Labels:     labels,
 		Assignee:   assignee,
 		ParentID:   in.ParentID,
 		BlockedBy:  []int{},
+		LinkedMaps: []int{},
 		Project:    project,
 		CreatedAt:  now,
 		UpdatedAt:  now,
 		Comments:   []model.Comment{},
 	}
 	s.db.Issues = append(s.db.Issues, issue)
+	if in.LinkedMapID != nil {
+		if err := s.setLinkedMapsLocked(id, []int{*in.LinkedMapID}); err != nil {
+			return model.IssueView{}, err
+		}
+	}
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return model.View(s.byIDLocked()[id], s.byIDLocked()), nil
 }
 
 func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
@@ -360,6 +680,76 @@ func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) 
 		return model.IssueView{}, err
 	}
 	return model.View(issue, s.byIDLocked()), nil
+}
+
+func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := s.setLinkedMapsLocked(id, mapIDs); err != nil {
+		return model.IssueView{}, err
+	}
+	if err := s.saveLocked(); err != nil {
+		return model.IssueView{}, err
+	}
+	return model.View(s.byIDLocked()[id], s.byIDLocked()), nil
+}
+
+func (s *Store) setLinkedMapsLocked(id int, mapIDs []int) error {
+	idx, issue, ok := s.findIndexLocked(id)
+	if !ok {
+		return ErrNotFound
+	}
+	if !model.IsMap(issue) {
+		return fmt.Errorf("%w: issue %d is not a map", ErrInvalid, id)
+	}
+	seen := map[int]bool{}
+	clean := []int{}
+	for _, mid := range mapIDs {
+		if mid == id {
+			return ErrSelfRelation
+		}
+		if seen[mid] {
+			continue
+		}
+		other, ok := s.findLocked(mid)
+		if !ok {
+			return fmt.Errorf("%w: map %d", ErrNotFound, mid)
+		}
+		if !model.IsMap(other) {
+			return fmt.Errorf("%w: issue %d is not a map", ErrInvalid, mid)
+		}
+		seen[mid] = true
+		clean = append(clean, mid)
+	}
+	issue.LinkedMaps = clean
+	issue.UpdatedAt = time.Now().UTC()
+	s.db.Issues[idx] = issue
+	now := issue.UpdatedAt
+	for i := range s.db.Issues {
+		other := s.db.Issues[i]
+		if other.ID == id {
+			continue
+		}
+		has := false
+		for _, lid := range other.LinkedMaps {
+			if lid == id {
+				has = true
+				break
+			}
+		}
+		want := seen[other.ID]
+		if has == want {
+			continue
+		}
+		if want {
+			other.LinkedMaps = append(append([]int{}, other.LinkedMaps...), id)
+		} else {
+			other.LinkedMaps = stripIDs(other.LinkedMaps, map[int]bool{id: true})
+		}
+		other.UpdatedAt = now
+		s.db.Issues[i] = other
+	}
+	return nil
 }
 
 func (s *Store) AddComment(id int, author, body string) (model.IssueView, error) {
@@ -533,6 +923,9 @@ func (s *Store) saveLocked() error {
 	if s.db.Issues == nil {
 		s.db.Issues = []model.Issue{}
 	}
+	if s.db.Labels == nil {
+		s.db.Labels = []string{}
+	}
 	raw, err := json.MarshalIndent(s.db, "", "  ")
 	if err != nil {
 		return err
@@ -572,6 +965,19 @@ func uniqueStrings(in []string) []string {
 		out = append(out, v)
 	}
 	return out
+}
+
+func normalizeLabel(name string) (string, error) {
+	s := strings.TrimSpace(name)
+	s = strings.TrimLeft(s, "#")
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return "", fmt.Errorf("%w: label is required", ErrInvalid)
+	}
+	if strings.ContainsAny(s, ", \t\n\r") {
+		return "", fmt.Errorf("%w: label cannot contain spaces or commas", ErrInvalid)
+	}
+	return s, nil
 }
 
 func normalizeAssignee(in *string) *string {

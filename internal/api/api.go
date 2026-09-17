@@ -7,6 +7,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/johnspence0212/NonLinear/internal/model"
 	"github.com/johnspence0212/NonLinear/internal/store"
 	"github.com/johnspence0212/NonLinear/internal/version"
 )
@@ -18,6 +19,7 @@ type Handler struct {
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/labels", h.labels)
+	mux.HandleFunc("POST /api/labels", h.createLabel)
 	mux.HandleFunc("GET /api/issues", h.list)
 	mux.HandleFunc("POST /api/issues", h.create)
 	mux.HandleFunc("GET /api/frontier", h.frontier)
@@ -26,9 +28,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/issues/{id}/comments", h.comment)
 	mux.HandleFunc("PATCH /api/issues/{id}/comments/{cid}", h.updateComment)
 	mux.HandleFunc("PUT /api/issues/{id}/blocked-by", h.blockedBy)
+	mux.HandleFunc("PUT /api/issues/{id}/linked-maps", h.linkedMaps)
+	mux.HandleFunc("POST /api/issues/{id}/labels", h.addLabel)
 	mux.HandleFunc("POST /api/issues/{id}/claim", h.claim)
 	mux.HandleFunc("POST /api/issues/{id}/resolve", h.resolve)
 	mux.HandleFunc("DELETE /api/issues/{id}", h.delete)
+	mux.HandleFunc("GET /api/issues/{id}/export", h.exportMap)
+	mux.HandleFunc("POST /api/import", h.importMap)
 	mux.HandleFunc("POST /api/wipe", h.wipe)
 }
 
@@ -43,6 +49,44 @@ func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) labels(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"labels": h.Store.Labels()})
+}
+
+func (h *Handler) createLabel(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Label string `json:"label"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	result, err := h.Store.CreateLabel(body.Label)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	status := http.StatusOK
+	if result.Created {
+		status = http.StatusCreated
+	}
+	writeJSON(w, status, result)
+}
+
+func (h *Handler) addLabel(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Label string `json:"label"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	issue, err := h.Store.AddLabel(id, body.Label)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
 }
 
 func (h *Handler) list(w http.ResponseWriter, r *http.Request) {
@@ -86,23 +130,25 @@ func (h *Handler) frontier(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 	var body struct {
-		Title    string   `json:"title"`
-		Body     string   `json:"body"`
-		Labels   []string `json:"labels"`
-		ParentID *int     `json:"parentId"`
-		Project  string   `json:"project"`
-		Assignee *string  `json:"assignee"`
+		Title       string   `json:"title"`
+		Body        string   `json:"body"`
+		Labels      []string `json:"labels"`
+		ParentID    *int     `json:"parentId"`
+		LinkedMapID *int     `json:"linkedMapId"`
+		Project     string   `json:"project"`
+		Assignee    *string  `json:"assignee"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	issue, err := h.Store.Create(store.CreateIssue{
-		Title:    body.Title,
-		Body:     body.Body,
-		Labels:   body.Labels,
-		ParentID: body.ParentID,
-		Project:  body.Project,
-		Assignee: body.Assignee,
+		Title:       body.Title,
+		Body:        body.Body,
+		Labels:      body.Labels,
+		ParentID:    body.ParentID,
+		LinkedMapID: body.LinkedMapID,
+		Project:     body.Project,
+		Assignee:    body.Assignee,
 	})
 	if err != nil {
 		writeStoreError(w, err)
@@ -223,6 +269,25 @@ func (h *Handler) blockedBy(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, issue)
 }
 
+func (h *Handler) linkedMaps(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		IssueIDs []int `json:"issueIds"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	issue, err := h.Store.SetLinkedMaps(id, body.IssueIDs)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
+}
+
 func (h *Handler) claim(w http.ResponseWriter, r *http.Request) {
 	id, ok := pathID(w, r)
 	if !ok {
@@ -271,6 +336,34 @@ func (h *Handler) delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) exportMap(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	bundle, err := h.Store.ExportMap(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	name := strings.ReplaceAll(bundle.Filename(), `"`, "")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	writeJSON(w, http.StatusOK, bundle)
+}
+
+func (h *Handler) importMap(w http.ResponseWriter, r *http.Request) {
+	var bundle model.MapBundle
+	if !decode(w, r, &bundle) {
+		return
+	}
+	result, err := h.Store.ImportMap(bundle)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, result)
 }
 
 func (h *Handler) wipe(w http.ResponseWriter, r *http.Request) {

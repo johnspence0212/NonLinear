@@ -175,6 +175,9 @@ aside {
   font-size: 12px;
 }
 .box-h strong { color: var(--fg); font-weight: 600; }
+.box-h button { color: var(--muted); padding: 0; }
+.box-h button:hover { color: var(--fg); }
+.box-actions { display: flex; align-items: center; gap: 10px; }
 .subnav { display: flex; gap: 6px; }
 .subnav button { color: var(--muted); padding: 4px 10px; border-radius: 4px; }
 .subnav button.active, .subnav button:hover { color: var(--fg); background: var(--bg-3); }
@@ -382,6 +385,14 @@ textarea {
 }
 .group-rows .row {
   padding-left: 14px;
+}
+.group-sub {
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  padding: 8px 12px 2px 14px;
 }
 .map-mark { color: var(--accent); font-size: 12px; }
 .progress {

@@ -19,10 +19,10 @@ The UI is `http://localhost:3333`. Issue identity is the numeric `id`. Display n
 ## Conventions
 
 - **Create an issue**: MCP `create_issue` with `title` and markdown `body`. Optional `labels`, `parentId`, `project`.
-- **Read an issue**: MCP `get_issue` with `id`. Returns body, comments, children, `blockers` (what this waits on), `blocks` (what waits on this), and `frontier` / `blocked` flags.
+- **Read an issue**: MCP `get_issue` with `id`. Returns body, comments, children, `blockers` (what this waits on), `blocks` (what waits on this), `linked` maps, and `frontier` / `blocked` flags.
 - **List issues**: MCP `list_issues`. Filters: `state` (`open`/`closed`), `labels` (AND), `parentId`, `assignee` (`unassigned` for unclaimed), `project`, `query`, `frontier`.
 - **Comment**: MCP `add_comment` with `id` and markdown `body`. Edit later with `update_comment` (`commentId` + `body`).
-- **Labels**: pass `labels` on `create_issue` / `update_issue`. Canonical triage strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
+- **Labels**: `list_labels` to see seed + catalog + in-use tags. `create_label` with `label` adds a tag to the catalog (idempotent, strips a leading `#`) so it shows in the UI before any issue uses it. `add_label` with `id` + `label` appends a tag to an issue without replacing existing labels. You can still pass `labels` on `create_issue` / `update_issue`. Canonical triage strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 - **Close**: MCP `update_issue` with `state: "closed"`, or `resolve_issue` (comment + close).
 
 ## When a skill says "publish to the issue tracker"
@@ -39,9 +39,12 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 - **Map**: `create_issue` with `labels: ["wayfinder:map"]`. Body holds Destination / Notes / Decisions so far / Not yet specified / Out of scope.
 - **Child ticket**: `create_issue` with `parentId` set to the map's `id`, `labels: ["wayfinder:<type>"]` where type is `research`, `prototype`, `grilling`, or `task`. Create tickets first, then wire blocking (issues need ids before they can reference each other).
+- **Linked map**: start a new Wayfinder map from an existing one with `create_issue` `{ title, linkedMapId }`. Adds `wayfinder:map` and a bidirectional `linked` edge. Both maps stay top-level; deleting one unlinks the other and does **not** delete it. Replace the set with `set_linked_maps` (`id` + `mapIds`). Export of a single map drops links that pointed at maps outside the bundle.
 - **Blocking**: `set_blocked_by` with the child `id` and `issueIds` of the issues that block it. Canonical, UI-visible. A ticket is unblocked when every blocker is `closed`.
 - **Frontier query**: `list_frontier` with `parentId` equal to the map's `id`. Returns `{next, issues}` — open, unblocked, unassigned children, maps excluded, ordered by id. Use `next`. Do not pick from `get_issue` children (those include closed tickets). Equivalent: `list_issues` with `parentId`, `state: "open"`, `frontier: true`.
 - **Claim**: `claim_issue` with the ticket `id` (optional `assignee`, default `cursor`). The session's first write. An open unassigned ticket is unclaimed.
 - **Resolve**: `resolve_issue` with `id` and `answer` (posts a resolution comment and closes). Then `update_issue` the map body to append a context pointer under Decisions so far: ticket **title** as the link text, one-line gist of the answer. Do not restate the full decision on the map.
-- **Delete a map**: `delete_issue` with the map `id`. Cascades to every child ticket and strips leftover blocked-by edges.
+- **Delete a map**: `delete_issue` with the map `id`. Cascades to every child ticket and strips leftover blocked-by and linked-map edges. Linked maps themselves are not deleted.
+- **Export a map**: `export_map` with the map `id`. Returns a `nonlinear.map` JSON bundle (map + descendants, comments, in-map `blockedBy`). Blocked-by edges that pointed outside the map are dropped.
+- **Import a map**: `import_map` with that bundle. Allocates new ids and remaps parent / blocked-by edges. The imported map is always top-level. Importing twice creates two maps.
 - **Wipe the tracker**: `wipe_db` with `confirm: true`. Resets ids so the next issue is NL-1. Irreversible.

@@ -89,34 +89,36 @@ function relCounts(items) {
   return [open ? `${open} open` : "", closed ? `${closed} closed` : ""].filter(Boolean).join(" · ");
 }
 
+function takeability(issue) {
+  if (isMap(issue)) return issue.state === "closed" ? "closed" : "map";
+  if (issue.state === "closed") return "closed";
+  if (issue.frontier) return "frontier";
+  if (issue.assignee) return "claimed";
+  return "blocked";
+}
+
 function stamp(label, kind = "") {
   return `<span class="stamp ${kind}">${esc(label)}</span>`;
 }
 
 function statusStamp(issue, lg = "") {
   const size = lg ? ` ${lg}` : "";
-  if (issue.state === "closed") return stamp("closed", `closed${size}`);
-  if (issue.blocked) return stamp("blocked", `blocked${size}`);
-  if (issue.assignee) return stamp("claimed", `claim${size}`);
-  if (issue.frontier) return stamp("open", `take${size}`);
-  return stamp("open", `open${size}`);
+  const k = takeability(issue);
+  if (k === "closed") return stamp("closed", `closed${size}`);
+  if (k === "map") return stamp("map", `open${size}`);
+  if (k === "blocked") return stamp("blocked", `blocked${size}`);
+  if (k === "claimed") return stamp(issue.assignee ? `@${issue.assignee}` : "claimed", `claim${size}`);
+  return stamp("frontier", `take${size}`);
 }
 
 function rowHTML(issue, selected, nav = true) {
   const m = mark(issue);
   const closed = issue.state === "closed";
-  const extra = closed
-    ? stamp("closed", "closed")
-    : issue.blocked
-      ? stamp("blocked", "blocked")
-      : issue.assignee
-        ? `@${issue.assignee}`
-        : m.ch;
   return `<div class="row ${selected ? "selected" : ""} ${closed ? "is-closed" : ""}" ${nav ? "data-nav" : ""} data-id="${issue.id}">
     <a class="id" href="${hrefFor(issue)}">${issue.identifier}</a>
     <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
     <span class="meta">${tagButtons(issue.labels)}</span>
-    <span class="mark ${m.cls}">${extra}</span>
+    <span class="mark ${m.cls}">${statusStamp(issue)}</span>
   </div>`;
 }
 
@@ -149,12 +151,12 @@ function box(titleRight, inner, footer = "") {
   return `<section class="box"><div class="box-h">${titleRight}</div><div class="box-b">${inner}</div>${footer}</section>`;
 }
 
-function composeBar(placeholder) {
-  return `<form class="banner" id="compose"><span>+</span><input name="title" placeholder="${placeholder}" autocomplete="off" /></form>`;
+function composeBar(placeholder, formId = "compose") {
+  return `<form class="banner" id="${formId}"><span>+</span><input name="title" placeholder="${placeholder}" autocomplete="off" /></form>`;
 }
 
-function bindCompose(extra) {
-  const form = $("#compose");
+function bindCompose(extra, formId = "compose") {
+  const form = document.getElementById(formId);
   if (!form) return;
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -199,7 +201,7 @@ async function refreshStats() {
     const n = state.stats[el.dataset.count];
     el.textContent = n || "";
   });
-  $("#counts").innerHTML = `<b>${state.stats.open}</b> open tickets · <b class="take">${state.stats.frontier}</b> frontier`;
+  $("#counts").innerHTML = `<b>${state.stats.open}</b> open · <b class="take">${state.stats.frontier}</b> frontier`;
 }
 
 function railLines(rows) {
@@ -248,14 +250,6 @@ async function loadMapChildren(mapId) {
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
-function listBox(title, placeholder, rows) {
-  return box(
-    `<strong>${title}</strong>`,
-    rows || `<div class="empty">none</div>`,
-    composeBar(placeholder)
-  );
-}
-
 function ticketHint() {
   return `<div class="hint">tickets live on maps — open a map to add one</div>`;
 }
@@ -275,11 +269,48 @@ function groupTicketsByMap(issues) {
   });
 }
 
-function flattenGroups(groups) {
-  return groups.flatMap((g) => g.tickets);
+function flattenGroups(groups, split = false) {
+  if (!split) return groups.flatMap((g) => g.tickets);
+  return groups.flatMap((g) => {
+    const buckets = bucketTickets(g.tickets);
+    return TAKE_SECTIONS.flatMap(([key]) => buckets[key]);
+  });
 }
 
-function groupedTicketHTML(groups) {
+const TAKE_SECTIONS = [
+  ["frontier", "frontier"],
+  ["claimed", "claimed"],
+  ["blocked", "waiting on a blocker"],
+  ["closed", "closed"],
+];
+
+function bucketTickets(tickets) {
+  const buckets = { frontier: [], claimed: [], blocked: [], closed: [], map: [] };
+  for (const t of tickets || []) buckets[takeability(t)].push(t);
+  return buckets;
+}
+
+function ticketRowsHTML(tickets, startIndex) {
+  return tickets
+    .map((t, n) => ticketHTML(t, startIndex + n === state.selected))
+    .join("");
+}
+
+function sectionedTicketsHTML(tickets, startIndex, split) {
+  if (!split) return { html: ticketRowsHTML(tickets, startIndex), next: startIndex + tickets.length };
+  const buckets = bucketTickets(tickets);
+  let i = startIndex;
+  const html = TAKE_SECTIONS.map(([key, label]) => {
+    const list = buckets[key];
+    if (!list.length) return "";
+    const rows = ticketRowsHTML(list, i);
+    i += list.length;
+    return `<div class="group-sub">${label}</div>${rows}`;
+  }).join("");
+  return { html, next: i };
+}
+
+function groupedTicketHTML(groups, split = false) {
   let i = 0;
   return groups
     .map((g) => {
@@ -287,13 +318,8 @@ function groupedTicketHTML(groups) {
         ? `<a class="group-map" href="${hrefFor(g.parent)}">${esc(g.parent.title)}</a>`
         : `<span class="group-map">inbox · no map</span>`;
       const n = g.tickets.length;
-      const rows = g.tickets
-        .map((t) => {
-          const sel = i === state.selected;
-          i++;
-          return ticketHTML(t, sel);
-        })
-        .join("");
+      const { html: rows, next } = sectionedTicketsHTML(g.tickets, i, split);
+      i = next;
       return `<div class="group"><div class="group-h">${head}<span>${n} ticket${n === 1 ? "" : "s"}</span></div><div class="group-rows">${rows}</div></div>`;
     })
     .join("");
@@ -340,10 +366,10 @@ function renderTagList(label) {
     return;
   }
   const groups = groupTicketsByMap(state.issues);
-  state.issues = flattenGroups(groups);
+  state.issues = flattenGroups(groups, true);
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
     `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
-    groupedTicketHTML(groups) || `<div class="empty">no tickets with this tag</div>`,
+    groupedTicketHTML(groups, true) || `<div class="empty">no tickets with this tag</div>`,
     ticketHint()
   )}`;
   syncChrome();
@@ -359,18 +385,35 @@ async function loadTag(label) {
 function renderList() {
   if (state.filter === "maps") {
     const rows = state.issues.map((issue, i) => mapRowHTML(issue, i === state.selected, true)).join("");
-    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${listBox("maps", "new map", rows)}`;
+    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+      `<strong>maps</strong><button type="button" data-import-map>import</button>`,
+      rows || `<div class="empty">none</div>`,
+      composeBar("new map")
+    )}`;
     bindCompose({ labels: ["wayfinder:map"] });
     syncChrome();
     return;
   }
+  const split = state.filter === "open" || state.filter === "all";
   const title =
     state.filter === "frontier" ? "frontier" : state.filter === "open" ? "open" : state.filter === "closed" ? "closed" : "all";
+  const caption =
+    state.filter === "frontier"
+      ? "open, unblocked, and unclaimed"
+      : state.filter === "open"
+        ? "all unfinished · frontier, claimed, and waiting on a blocker"
+        : state.filter === "closed"
+          ? "resolved tickets by map"
+          : "every ticket by map";
+  const empty =
+    state.filter === "frontier"
+      ? "nothing on the frontier — blocked and claimed tickets are under open"
+      : "no tickets — open a map to add one";
   const groups = groupTicketsByMap(state.issues);
-  state.issues = flattenGroups(groups);
+  state.issues = flattenGroups(groups, split);
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-    `<strong>${title}</strong><span>tickets by map</span>`,
-    groupedTicketHTML(groups) || `<div class="empty">no tickets — open a map to add one</div>`,
+    `<strong>${title}</strong><span>${caption}</span>`,
+    groupedTicketHTML(groups, split) || `<div class="empty">${empty}</div>`,
     ticketHint()
   )}`;
   syncChrome();
@@ -390,12 +433,12 @@ async function renderHome() {
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${statStrip()}
     ${box(
-      "<strong>frontier</strong><span>takeable tickets by map</span>",
-      groupedTicketHTML(groups) || `<div class="empty">nothing takeable</div>`,
+      "<strong>frontier</strong><span>open, unblocked, and unclaimed</span>",
+      groupedTicketHTML(groups) || `<div class="empty">nothing on the frontier</div>`,
       ticketHint()
     )}
     ${box(
-      `<strong>maps</strong><a href="#/" data-jump="maps">open maps view</a>`,
+      `<strong>maps</strong><span class="box-actions"><button type="button" data-import-map>import</button><a href="#/" data-jump="maps">open maps view</a></span>`,
       mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
       composeBar("new map")
     )}`;
@@ -476,8 +519,16 @@ async function renderMap(id) {
   const filters = ["open", "frontier", "closed", "all"]
     .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
     .join("");
-  const rows = state.issues.map((issue, i) => ticketHTML(issue, i === state.selected)).join("");
-  const kids = map.children || [];
+  const split = state.mapChildFilter === "open" || state.mapChildFilter === "all";
+  const { html: rows } = sectionedTicketsHTML(state.issues, 0, split);
+  state.issues = flattenGroups([{ parent: null, tickets: state.issues }], split);
+  if (state.selected >= state.issues.length) state.selected = 0;
+  const empty =
+    state.mapChildFilter === "frontier"
+      ? "nothing on the frontier — blocked and claimed tickets are under open"
+      : "no tickets on this map";
+  const kids = (map.children || []).filter((c) => !isMap(c));
+  const linked = map.linked || [];
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
@@ -487,16 +538,23 @@ async function renderMap(id) {
         <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
         <div class="actions">
           <button data-act="edit">edit map</button>
+          <button data-act="export">export</button>
           <button data-act="delete" class="danger">delete map</button>
         </div>
       </div>`
     )}
     ${box(
+      `<strong>linked maps</strong><span>${linked.length ? linked.length : ""}</span>`,
+      linked.map((m) => rowHTML(m, false, false)).join("") || `<div class="empty">none — start another session from this map</div>`,
+      composeBar("new linked map", "compose-link")
+    )}
+    ${box(
       `<strong>tickets</strong><div class="subnav">${filters}</div>`,
-      rows || `<div class="empty">no tickets on this map</div>`,
+      rows || `<div class="empty">${empty}</div>`,
       composeBar("new ticket on this map")
     )}`;
   bindCompose({ parentId: map.id });
+  bindCompose({ linkedMapId: map.id }, "compose-link");
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(map, btn.dataset.act)));
   main.querySelectorAll("[data-map-filter]").forEach((b) => {
     b.addEventListener("click", () => {
@@ -513,6 +571,7 @@ async function renderMap(id) {
         ["open", kids.filter((c) => c.state === "open").length],
         ["frontier", kids.filter((c) => c.frontier).length],
         ["blocked", kids.filter((c) => c.blocked).length],
+        ["linked", linked.length],
       ])
     )
   );
@@ -654,7 +713,7 @@ async function renderIssue(id) {
         </div>
       </div>`
     )}
-    ${relationBox("blocked by", blockers, "not blocked — takeable when unassigned")}
+    ${relationBox("blocked by", blockers, "not blocked — frontier when unclaimed")}
     ${blocks.length ? relationBox("blocks", blocks, "") : ""}
     ${box(
       "<strong>comments</strong>",
@@ -732,6 +791,37 @@ function startInlineEdit(issue) {
   bindEditForm(issue);
 }
 
+function slugTitle(title) {
+  return String(title || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 40)
+    .replace(/-+$/g, "");
+}
+
+async function downloadMap(issue) {
+  const bundle = await api(`/api/issues/${issue.id}/export`);
+  const slug = slugTitle(issue.title);
+  const name = `${issue.identifier}${slug ? "-" + slug : ""}.nlmap.json`;
+  const blob = new Blob([JSON.stringify(bundle, null, 2) + "\n"], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = name;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function importMapFile(file) {
+  const bundle = JSON.parse(await file.text());
+  const result = await api("/api/import", { method: "POST", body: JSON.stringify(bundle) });
+  state.error = "";
+  location.hash = `#/map/${result.map.id}`;
+  await paint();
+}
+
 async function act(issue, kind) {
   try {
     if (kind === "claim") await api(`/api/issues/${issue.id}/claim`, { method: "POST", body: "{}" });
@@ -740,6 +830,10 @@ async function act(issue, kind) {
     if (kind === "reopen") await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ state: "open" }) });
     if (kind === "edit") {
       startInlineEdit(issue);
+      return;
+    }
+    if (kind === "export") {
+      await downloadMap(issue);
       return;
     }
     if (kind === "delete") {
@@ -832,7 +926,7 @@ async function renderSearch(query) {
     const all = data.issues || [];
     mapList = all.filter(isMap);
     groups = groupTicketsByMap(all.filter((i) => !isMap(i)));
-    state.issues = flattenGroups(groups);
+    state.issues = flattenGroups(groups, true);
     if (state.selected >= state.issues.length) state.selected = 0;
     state.error = "";
   } catch (err) {
@@ -848,7 +942,7 @@ async function renderSearch(query) {
     )}
     ${box(
       `<strong>tickets</strong><span>by map</span>`,
-      groupedTicketHTML(groups) || `<div class="empty">no tickets match</div>`,
+      groupedTicketHTML(groups, true) || `<div class="empty">no tickets match</div>`,
       ticketHint()
     )}`;
   syncChrome();
@@ -868,6 +962,7 @@ function renderSettings() {
       </div>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
       <div class="actions">
+        <button type="button" data-import-map>import map</button>
         <button type="button" id="wipe" class="danger">wipe database</button>
       </div>
     </div>`
@@ -923,6 +1018,18 @@ document.getElementById("refresh").addEventListener("click", () => {
   paint();
 });
 
+$("#import-map-file").addEventListener("change", async (e) => {
+  const file = e.target.files && e.target.files[0];
+  e.target.value = "";
+  if (!file) return;
+  try {
+    await importMapFile(file);
+  } catch (err) {
+    state.error = err.message;
+    await paint();
+  }
+});
+
 main.addEventListener("click", (e) => {
   if (!e.target.closest("[data-back]")) return;
   e.preventDefault();
@@ -930,6 +1037,13 @@ main.addEventListener("click", (e) => {
 });
 
 document.getElementById("app").addEventListener("click", (e) => {
+  const importBtn = e.target.closest("[data-import-map]");
+  if (importBtn) {
+    e.preventDefault();
+    const input = $("#import-map-file");
+    if (input) input.click();
+    return;
+  }
   const t = e.target.closest("[data-tag]");
   if (!t) return;
   e.preventDefault();

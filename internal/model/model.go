@@ -43,6 +43,7 @@ type Issue struct {
 	Assignee   *string   `json:"assignee"`
 	ParentID   *int      `json:"parentId"`
 	BlockedBy  []int     `json:"blockedBy"`
+	LinkedMaps []int     `json:"linkedMaps"`
 	Project    string    `json:"project"`
 	CreatedAt  time.Time `json:"createdAt"`
 	UpdatedAt  time.Time `json:"updatedAt"`
@@ -57,6 +58,7 @@ type IssueView struct {
 	Children     []IssueSummary `json:"children,omitempty"`
 	Blockers     []IssueSummary `json:"blockers,omitempty"`
 	Blocks       []IssueSummary `json:"blocks,omitempty"`
+	Linked       []IssueSummary `json:"linked,omitempty"`
 	Parent       *IssueSummary  `json:"parent,omitempty"`
 }
 
@@ -73,15 +75,17 @@ type IssueSummary struct {
 }
 
 type DB struct {
-	NextID int     `json:"nextId"`
-	Prefix string  `json:"prefix"`
-	Issues []Issue `json:"issues"`
+	NextID int      `json:"nextId"`
+	Prefix string   `json:"prefix"`
+	Issues []Issue  `json:"issues"`
+	Labels []string `json:"labels,omitempty"`
 }
 
 func CloneIssue(in Issue) Issue {
 	out := in
 	out.Labels = append([]string(nil), in.Labels...)
 	out.BlockedBy = append([]int(nil), in.BlockedBy...)
+	out.LinkedMaps = append([]int(nil), in.LinkedMaps...)
 	out.Comments = append([]Comment(nil), in.Comments...)
 	if in.Assignee != nil {
 		v := *in.Assignee
@@ -96,6 +100,9 @@ func CloneIssue(in Issue) Issue {
 	}
 	if out.BlockedBy == nil {
 		out.BlockedBy = []int{}
+	}
+	if out.LinkedMaps == nil {
+		out.LinkedMaps = []int{}
 	}
 	if out.Comments == nil {
 		out.Comments = []Comment{}
@@ -174,6 +181,7 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		Children:     []IssueSummary{},
 		Blockers:     []IssueSummary{},
 		Blocks:       []IssueSummary{},
+		Linked:       []IssueSummary{},
 	}
 	if issue.ParentID != nil {
 		if parent, ok := byID[*issue.ParentID]; ok {
@@ -182,7 +190,7 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		}
 	}
 	for _, other := range byID {
-		if other.ParentID != nil && *other.ParentID == issue.ID {
+		if other.ParentID != nil && *other.ParentID == issue.ID && !IsMap(other) {
 			v.Children = append(v.Children, Summarize(other, byID))
 		}
 		for _, bid := range other.BlockedBy {
@@ -199,5 +207,29 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 			v.Blockers = append(v.Blockers, Summarize(blocker, byID))
 		}
 	}
+	seenLinked := map[int]bool{}
+	addLinked := func(id int) {
+		if id == issue.ID || seenLinked[id] {
+			return
+		}
+		other, ok := byID[id]
+		if !ok || !IsMap(other) {
+			return
+		}
+		seenLinked[id] = true
+		v.Linked = append(v.Linked, Summarize(other, byID))
+	}
+	for _, id := range issue.LinkedMaps {
+		addLinked(id)
+	}
+	for _, other := range byID {
+		for _, id := range other.LinkedMaps {
+			if id == issue.ID {
+				addLinked(other.ID)
+				break
+			}
+		}
+	}
+	sort.Slice(v.Linked, func(i, j int) bool { return v.Linked[i].ID < v.Linked[j].ID })
 	return v
 }

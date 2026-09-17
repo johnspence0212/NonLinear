@@ -269,6 +269,264 @@ func TestUpdateComment(t *testing.T) {
 	}
 }
 
+func TestCreateAndAddLabel(t *testing.T) {
+	s := testStore(t)
+	got, err := s.CreateLabel("#sprint-12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !got.Created || got.Label != "sprint-12" {
+		t.Fatalf("create: %+v", got)
+	}
+	found := false
+	for _, l := range got.Labels {
+		if l == "sprint-12" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("catalog missing sprint-12: %v", got.Labels)
+	}
+	again, err := s.CreateLabel("sprint-12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Created {
+		t.Fatal("second create should be idempotent")
+	}
+	if _, err := s.CreateLabel("has space"); err == nil {
+		t.Fatal("expected space error")
+	}
+	if _, err := s.CreateLabel(""); err == nil {
+		t.Fatal("expected empty error")
+	}
+
+	issue, err := s.Create(CreateIssue{Title: "Ticket", Labels: []string{"needs-triage"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tagged, err := s.AddLabel(issue.ID, "sprint-12")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.HasLabel(tagged.Issue, "needs-triage") || !model.HasLabel(tagged.Issue, "sprint-12") {
+		t.Fatalf("labels replaced instead of appended: %v", tagged.Labels)
+	}
+	if _, err := s.Wipe(); err != nil {
+		t.Fatal(err)
+	}
+	after := s.Labels()
+	for _, l := range after {
+		if l == "sprint-12" {
+			t.Fatal("wipe should drop catalog labels")
+		}
+	}
+}
+
+func TestLinkedMapsAreSymmetricAndDoNotCascade(t *testing.T) {
+	s := testStore(t)
+	a, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "Spawned session", LinkedMapID: &a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.IsMap(b.Issue) {
+		t.Fatal("linkedMapId should make a map")
+	}
+	if len(b.Linked) != 1 || b.Linked[0].ID != a.ID {
+		t.Fatalf("new map should link back: %+v", b.Linked)
+	}
+	gotA, err := s.Get(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotA.Linked) != 1 || gotA.Linked[0].ID != b.ID {
+		t.Fatalf("origin should show the new map: %+v", gotA.Linked)
+	}
+
+	ticket, err := s.Create(CreateIssue{Title: "Not a map"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetLinkedMaps(a.ID, []int{ticket.ID}); err == nil {
+		t.Fatal("should not link a ticket")
+	}
+	if _, err := s.SetLinkedMaps(a.ID, []int{a.ID}); err == nil {
+		t.Fatal("should not self-link")
+	}
+
+	if _, err := s.Delete(b.ID); err != nil {
+		t.Fatal(err)
+	}
+	gotA, err = s.Get(a.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotA.Linked) != 0 {
+		t.Fatalf("delete should unlink, not delete origin: %+v", gotA.Linked)
+	}
+	if s.Count() != 2 {
+		t.Fatalf("origin and ticket should remain, count=%d", s.Count())
+	}
+}
+
+func TestExportMapDropsExternalBlockersAndIncludesDescendants(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Chart the destination", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	a, err := s.Create(CreateIssue{Title: "What store?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "How to expose MCP?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outside, err := s.Create(CreateIssue{Title: "Other map ticket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	grand := a.ID
+	if _, err := s.Create(CreateIssue{Title: "Nested", ParentID: &grand}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBlockedBy(b.ID, []int{a.ID, outside.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddComment(a.ID, "cursor", "JSON on disk."); err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := s.ExportMap(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Kind != model.MapBundleKind || bundle.Version != model.MapBundleVersion {
+		t.Fatalf("header: %+v", bundle)
+	}
+	if bundle.RootID != m.ID || len(bundle.Issues) != 4 {
+		t.Fatalf("bundle: root=%d n=%d", bundle.RootID, len(bundle.Issues))
+	}
+	byID := map[int]model.Issue{}
+	for _, issue := range bundle.Issues {
+		byID[issue.ID] = issue
+	}
+	if byID[m.ID].ParentID != nil {
+		t.Fatal("exported map should have no parent")
+	}
+	gotB := byID[b.ID]
+	if len(gotB.BlockedBy) != 1 || gotB.BlockedBy[0] != a.ID {
+		t.Fatalf("external blocker should be dropped: %v", gotB.BlockedBy)
+	}
+	if len(byID[a.ID].Comments) != 1 {
+		t.Fatalf("comments: %+v", byID[a.ID].Comments)
+	}
+	if _, err := s.ExportMap(a.ID); err == nil {
+		t.Fatal("export of a ticket should fail")
+	}
+	if _, err := s.ExportMap(99); err == nil {
+		t.Fatal("export of missing id should fail")
+	}
+}
+
+func TestImportMapRemapsIDsAndPreservesGraph(t *testing.T) {
+	src := testStore(t)
+	m, _ := src.Create(CreateIssue{Title: "Chart the destination", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nA tracker.\n"})
+	parent := m.ID
+	a, _ := src.Create(CreateIssue{Title: "What store?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	b, _ := src.Create(CreateIssue{Title: "How to expose MCP?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if _, err := src.SetBlockedBy(b.ID, []int{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.Resolve(a.ID, "cursor", "JSON file with atomic writes."); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := src.ExportMap(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dst := testStore(t)
+	existing, _ := dst.Create(CreateIssue{Title: "Already here"})
+	got, err := dst.ImportMap(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Map.ID == m.ID || got.Map.ID == existing.ID {
+		t.Fatalf("imported map should get a new id, got %d", got.Map.ID)
+	}
+	if got.Map.Title != "Chart the destination" || !model.IsMap(got.Map.Issue) {
+		t.Fatalf("map: %+v", got.Map)
+	}
+	if got.Map.ParentID != nil {
+		t.Fatal("imported map should be top-level")
+	}
+	if len(got.Created) != 3 {
+		t.Fatalf("created %v", got.Created)
+	}
+	if got.Map.Identifier != "NL-2" {
+		t.Fatalf("identifier %s", got.Map.Identifier)
+	}
+	if len(got.Map.Children) != 2 {
+		t.Fatalf("children: %+v", got.Map.Children)
+	}
+
+	kids := dst.List(ListFilter{ParentID: &got.Map.ID})
+	var storeQ, mcpQ model.IssueView
+	for _, k := range kids {
+		switch k.Title {
+		case "What store?":
+			storeQ = k
+		case "How to expose MCP?":
+			mcpQ = k
+		}
+	}
+	if storeQ.ID == 0 || mcpQ.ID == 0 {
+		t.Fatalf("kids: %+v", kids)
+	}
+	if storeQ.State != model.StateClosed || len(storeQ.Comments) != 1 {
+		t.Fatalf("resolved ticket: %+v", storeQ)
+	}
+	if len(mcpQ.BlockedBy) != 1 || mcpQ.BlockedBy[0] != storeQ.ID {
+		t.Fatalf("blockedBy remapped: %v want %d", mcpQ.BlockedBy, storeQ.ID)
+	}
+	front := dst.Frontier(&got.Map.ID)
+	if len(front) != 1 || front[0].ID != mcpQ.ID {
+		t.Fatalf("frontier after import: %+v", ids(front))
+	}
+
+	again, err := dst.ImportMap(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Map.ID == got.Map.ID {
+		t.Fatal("second import should create another map")
+	}
+	if dst.Count() != 1+3+3 {
+		t.Fatalf("count %d", dst.Count())
+	}
+}
+
+func TestImportMapRejectsBadBundle(t *testing.T) {
+	s := testStore(t)
+	if _, err := s.ImportMap(model.MapBundle{Kind: "nope", Version: 1, Issues: []model.Issue{{ID: 1, Title: "X"}}}); err == nil {
+		t.Fatal("expected kind error")
+	}
+	if _, err := s.ImportMap(model.MapBundle{Kind: model.MapBundleKind, Version: 99, RootID: 1, Issues: []model.Issue{{ID: 1, Title: "X"}}}); err == nil {
+		t.Fatal("expected version error")
+	}
+	if _, err := s.ImportMap(model.MapBundle{Kind: model.MapBundleKind, Version: 1}); err == nil {
+		t.Fatal("expected empty error")
+	}
+}
+
 func ids(views []model.IssueView) []int {
 	out := make([]int, len(views))
 	for i, v := range views {

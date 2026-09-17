@@ -113,6 +113,58 @@ func TestUpdateComment(t *testing.T) {
 	}
 }
 
+func TestMapExportImport(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	mapIssue := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Find the way",
+		"labels": []string{"wayfinder:map"},
+	})
+	parentID := int(mapIssue["id"].(float64))
+	a := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "What store?",
+		"parentId": parentID,
+	})
+	b := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "How to expose MCP?",
+		"parentId": parentID,
+	})
+	putJSON(t, mux, "/api/issues/"+itoa(b["id"])+"/blocked-by", map[string]any{
+		"issueIds": []any{a["id"]},
+	})
+
+	exported := getJSON(t, mux, "/api/issues/"+itoa(mapIssue["id"])+"/export")
+	if exported["kind"] != "nonlinear.map" {
+		t.Fatalf("kind: %v", exported)
+	}
+	issues, _ := exported["issues"].([]any)
+	if len(issues) != 3 {
+		t.Fatalf("export issues: %v", exported)
+	}
+
+	ticket := postJSON(t, mux, "/api/issues", map[string]any{"title": "Not a map"})
+	req := httptest.NewRequest(http.MethodGet, "/api/issues/"+itoa(ticket["id"])+"/export", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("export ticket: %d %s", rec.Code, rec.Body.String())
+	}
+
+	imported := postJSON(t, mux, "/api/import", exported)
+	gotMap, _ := imported["map"].(map[string]any)
+	if gotMap["id"] == mapIssue["id"] {
+		t.Fatalf("imported map should be new: %v", imported)
+	}
+	if gotMap["title"] != "Find the way" {
+		t.Fatalf("title: %v", gotMap)
+	}
+}
+
 func TestWipeRequiresConfirm(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {
@@ -126,6 +178,71 @@ func TestWipeRequiresConfirm(t *testing.T) {
 	mux.ServeHTTP(rec, req)
 	if rec.Code != http.StatusBadRequest {
 		t.Fatalf("got %d %s", rec.Code, rec.Body.String())
+	}
+}
+
+func TestCreateAndAddLabelHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	created := postJSON(t, mux, "/api/labels", map[string]any{"label": "#focus"})
+	if created["label"] != "focus" || created["created"] != true {
+		t.Fatalf("create: %v", created)
+	}
+	listed := getJSON(t, mux, "/api/labels")
+	found := false
+	for _, v := range listed["labels"].([]any) {
+		if v == "focus" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatalf("list: %v", listed)
+	}
+
+	issue := postJSON(t, mux, "/api/issues", map[string]any{"title": "Ticket"})
+	tagged := postJSON(t, mux, "/api/issues/"+itoa(issue["id"])+"/labels", map[string]any{"label": "focus"})
+	labels, _ := tagged["labels"].([]any)
+	if len(labels) != 1 || labels[0] != "focus" {
+		t.Fatalf("add: %v", tagged)
+	}
+}
+
+func TestLinkedMapsHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	origin := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Origin",
+		"labels": []string{"wayfinder:map"},
+	})
+	spawned := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":       "Spawned",
+		"linkedMapId": origin["id"],
+	})
+	linked, _ := spawned["linked"].([]any)
+	if len(linked) != 1 {
+		t.Fatalf("spawned linked: %v", spawned)
+	}
+	got := getJSON(t, mux, "/api/issues/"+itoa(origin["id"]))
+	if len(got["linked"].([]any)) != 1 {
+		t.Fatalf("origin linked: %v", got)
+	}
+	putJSON(t, mux, "/api/issues/"+itoa(origin["id"])+"/linked-maps", map[string]any{
+		"issueIds": []any{},
+	})
+	got = getJSON(t, mux, "/api/issues/"+itoa(origin["id"]))
+	if linked, ok := got["linked"].([]any); ok && len(linked) != 0 {
+		t.Fatalf("unlinked: %v", got)
 	}
 }
 
