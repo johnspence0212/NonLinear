@@ -416,9 +416,8 @@ textarea {
   font-weight: 600;
   min-width: 0;
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   text-align: right;
+  overflow-wrap: anywhere;
 }
 .rail-line a { color: var(--accent); }
 .rail-line a:hover { text-decoration: underline; }
