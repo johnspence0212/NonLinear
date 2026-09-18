@@ -246,6 +246,47 @@ func TestLinkedMapsHTTP(t *testing.T) {
 	}
 }
 
+func TestProjectLifecycle(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	m := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Decision map",
+		"labels": []string{"wayfinder:map"},
+		"body":   "## Destination\n\nShip it.\n",
+	})
+	ready := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/ready-for-spec", map[string]any{})
+	if ready["lifecycle"] != "ready_for_spec" {
+		t.Fatalf("ready: %v", ready)
+	}
+	spec := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/create-spec", map[string]any{})
+	if spec["kind"] != "spec" || spec["lifecycle"] != "draft" {
+		t.Fatalf("spec: %v", spec)
+	}
+	approved := postJSON(t, mux, "/api/issues/"+itoa(spec["id"])+"/approve", map[string]any{})
+	if approved["lifecycle"] != "approved" {
+		t.Fatalf("approve: %v", approved)
+	}
+	plan := postJSON(t, mux, "/api/issues/"+itoa(spec["id"])+"/create-plan", map[string]any{})
+	if plan["kind"] != "plan" || plan["lifecycle"] != "draft" {
+		t.Fatalf("plan: %v", plan)
+	}
+	projects := getJSON(t, mux, "/api/projects")
+	list, _ := projects["projects"].([]any)
+	if len(list) != 1 {
+		t.Fatalf("projects: %v", projects)
+	}
+	pid := int(list[0].(map[string]any)["id"].(float64))
+	got := getJSON(t, mux, fmt.Sprintf("/api/projects/%d", pid))
+	if got["stage"] != "ready_for_tickets" {
+		t.Fatalf("stage: %v", got)
+	}
+}
+
 func postJSON(t *testing.T, h http.Handler, path string, body any) map[string]any {
 	t.Helper()
 	raw, _ := json.Marshal(body)

@@ -46,7 +46,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_issues",
-		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (Wayfinder children of a map), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for frontier tickets (open, unblocked, unclaimed). Closed issues are never on the frontier.",
+		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (children of a map or plan), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for frontier tickets (open, unblocked, unclaimed). Maps, specs, and plans are never on the frontier. Closed issues are never on the frontier.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		filter := store.ListFilter{
 			State:        in.State,
@@ -171,7 +171,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_frontier",
-		Description: "List frontier Wayfinder tickets: open, unassigned, every blocker closed, not a map. Pass parentId of the map to scope to that map's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
+		Description: "List frontier Wayfinder tickets: open, unassigned, every blocker closed, not a map/spec/plan. Pass parentId of the map or plan to scope to that parent's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in frontierInput) (*mcp.CallToolResult, any, error) {
 		return textResult(frontierPayload(st.Frontier(in.ParentID)))
 	})
@@ -243,6 +243,112 @@ func New(st *store.Store) *mcp.Server {
 			return errResult(err)
 		}
 		return textResult(map[string]any{"ok": true, "deleted": n, "version": version.Version})
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_projects",
+		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
+		return textResult(map[string]any{"projects": st.ListProjects()})
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_project",
+		Description: "Fetch one Project by id. Returns destination, derived stage, and Decision Map / Spec / Plan summaries.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
+		project, err := st.GetProject(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(project)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_project",
+		Description: "Create a Project parent. Standalone maps also get an implicit Project (id = map id) on load; use this only when you want an explicit parent first.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, any, error) {
+		project, err := st.CreateProject(store.CreateProject{Title: in.Title, Destination: in.Destination})
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(project)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "ready_for_spec",
+		Description: "Mark a Decision Map ready_for_spec. Explicit lifecycle action; not inferred from closed tickets. Then create_spec.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.ReadyForSpec(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "clear_route",
+		Description: "Mark a Decision Map cleared (route is clear). Does not create a spec.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.ClearRoute(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_spec",
+		Description: "Create a draft Spec from a map that is ready_for_spec. Body is an empty to-spec skeleton (destination copied from the map). Does not run the /to-spec skill.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.CreateSpec(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "approve_spec",
+		Description: "Approve a draft Spec so an implementation plan can be created.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.ApproveSpec(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_plan",
+		Description: "Create a draft Implementation Plan from an approved Spec. Does not run /to-tickets. Add implementation tickets as children of the plan (parentId).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.CreatePlan(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "activate_plan",
+		Description: "Move an Implementation Plan from draft to active (project stage implementing).",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.ActivatePlan(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "deliver_plan",
+		Description: "Mark an active Implementation Plan delivered (project stage complete). Explicit; not inferred from zero open tickets.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.DeliverPlan(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
 	})
 
 	return server
@@ -334,6 +440,15 @@ type addLabelInput struct {
 
 type wipeInput struct {
 	Confirm bool `json:"confirm" jsonschema:"must be true to wipe"`
+}
+
+type projectIDInput struct {
+	ID int `json:"id" jsonschema:"project id"`
+}
+
+type createProjectInput struct {
+	Title       string `json:"title" jsonschema:"project title"`
+	Destination string `json:"destination,omitempty" jsonschema:"optional destination; otherwise taken from the map body"`
 }
 
 type importMapInput struct {

@@ -2,9 +2,10 @@ const state = {
   filter: localStorage.getItem("nl-filter") || "home",
   mapChildFilter: localStorage.getItem("nl-map-filter") || "open",
   issues: [],
+  projects: [],
   selected: 0,
   error: "",
-  stats: { all: 0, open: 0, closed: 0, maps: 0, frontier: 0, blocked: 0 },
+  stats: { all: 0, open: 0, closed: 0, maps: 0, projects: 0, frontier: 0, blocked: 0 },
   labels: [],
   version: "",
   dataPath: "",
@@ -19,6 +20,12 @@ function route() {
   const hash = location.hash.replace(/^#/, "") || "/";
   const map = hash.match(/^\/map\/(\d+)$/);
   if (map) return { name: "map", id: Number(map[1]) };
+  const spec = hash.match(/^\/spec\/(\d+)$/);
+  if (spec) return { name: "spec", id: Number(spec[1]) };
+  const plan = hash.match(/^\/plan\/(\d+)$/);
+  if (plan) return { name: "plan", id: Number(plan[1]) };
+  const project = hash.match(/^\/project\/(\d+)$/);
+  if (project) return { name: "project", id: Number(project[1]) };
   const tag = hash.match(/^\/tag\/(.+)$/);
   if (tag) return { name: "tag", label: decodeURIComponent(tag[1]) };
   const search = hash.match(/^\/search\/(.+)$/);
@@ -49,11 +56,37 @@ function tagButtons(labels) {
 }
 
 function isMap(issue) {
-  return (issue.labels || []).includes("wayfinder:map");
+  return issue.kind === "decision-map" || (issue.labels || []).includes("wayfinder:map");
+}
+
+function isSpec(issue) {
+  return issue.kind === "spec";
+}
+
+function isPlan(issue) {
+  return issue.kind === "plan";
+}
+
+function isArtifact(issue) {
+  return isMap(issue) || isSpec(issue) || isPlan(issue);
 }
 
 function hrefFor(issue) {
-  return isMap(issue) ? `#/map/${issue.id}` : `#/${issue.id}`;
+  if (isMap(issue)) return `#/map/${issue.id}`;
+  if (isSpec(issue)) return `#/spec/${issue.id}`;
+  if (isPlan(issue)) return `#/plan/${issue.id}`;
+  return `#/${issue.id}`;
+}
+
+function listCursor() {
+  const r = route();
+  if (r.name === "list" && state.filter === "projects") return state.projects;
+  return state.issues;
+}
+
+function listHref(item) {
+  if (item && item.stage && (item.identifier || "").startsWith("P-")) return projectHref(item);
+  return hrefFor(item);
 }
 
 async function api(path, opts = {}) {
@@ -91,6 +124,8 @@ function relCounts(items) {
 
 function takeability(issue) {
   if (isMap(issue)) return issue.state === "closed" ? "closed" : "map";
+  if (isSpec(issue)) return issue.state === "closed" ? "closed" : "spec";
+  if (isPlan(issue)) return issue.state === "closed" ? "closed" : "plan";
   if (issue.state === "closed") return "closed";
   if (issue.frontier) return "frontier";
   if (issue.assignee) return "claimed";
@@ -106,6 +141,8 @@ function statusStamp(issue, lg = "") {
   const k = takeability(issue);
   if (k === "closed") return stamp("closed", `closed${size}`);
   if (k === "map") return stamp("map", `open${size}`);
+  if (k === "spec") return stamp(issue.lifecycle || "spec", `open${size}`);
+  if (k === "plan") return stamp(issue.lifecycle || "plan", `open${size}`);
   if (k === "blocked") return stamp("blocked", `blocked${size}`);
   if (k === "claimed") return stamp(issue.assignee ? `@${issue.assignee}` : "claimed", `claim${size}`);
   return stamp("frontier", `take${size}`);
@@ -143,7 +180,9 @@ function esc(s) {
 
 function backHref(issue) {
   if (issue.parent && isMap(issue.parent)) return `#/map/${issue.parent.id}`;
-  if (issue.parent) return `#/${issue.parent.id}`;
+  if (issue.parent && isPlan(issue.parent)) return `#/plan/${issue.parent.id}`;
+  if (issue.parent) return hrefFor(issue.parent);
+  if (issue.projectRef) return `#/project/${issue.projectRef.id}`;
   return "#/";
 }
 
@@ -151,21 +190,62 @@ function box(titleRight, inner, footer = "") {
   return `<section class="box"><div class="box-h">${titleRight}</div><div class="box-b">${inner}</div>${footer}</section>`;
 }
 
-function composeBar(placeholder, formId = "compose") {
-  return `<form class="banner" id="${formId}"><span>+</span><input name="title" placeholder="${placeholder}" autocomplete="off" /></form>`;
+function composeBar(label, formId = "compose", kind = "issue") {
+  const fields =
+    kind === "project"
+      ? `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
+        <label class="edit-label">destination<textarea name="destination" placeholder="optional"></textarea></label>`
+      : `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
+        <label class="edit-label">body${mdEditorHTML(formId + "-md", "markdown body")}</label>`;
+  return `<div class="compose" data-compose-root="${esc(formId)}">
+    <button type="button" class="banner compose-open" data-compose-open>+ ${esc(label)}</button>
+    <form class="compose-form" id="${esc(formId)}" hidden>
+      <div class="pad">${fields}
+        <div class="actions"><button type="submit">create</button><button type="button" data-compose-cancel>cancel</button></div>
+      </div>
+    </form>
+  </div>`;
 }
 
 function bindCompose(extra, formId = "compose") {
+  const wrap = document.querySelector(`[data-compose-root="${formId}"]`);
   const form = document.getElementById(formId);
-  if (!form) return;
+  if (!wrap || !form) return;
+  const openBtn = wrap.querySelector("[data-compose-open]");
+  bindMdEditor(form.querySelector(".md-editor"));
+  const show = (on) => {
+    openBtn.hidden = on;
+    form.hidden = !on;
+    if (on) form.querySelector("[name=title]")?.focus();
+  };
+  openBtn.addEventListener("click", () => show(true));
+  form.querySelector("[data-compose-cancel]")?.addEventListener("click", () => {
+    form.reset();
+    const preview = form.querySelector(".md-preview");
+    if (preview) preview.innerHTML = mdPreviewHTML("");
+    show(false);
+  });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
-    const title = form.title.value.trim();
+    const title = (form.querySelector("[name=title]")?.value || "").trim();
     if (!title) return;
     try {
+      if (extra && extra._project) {
+        const created = await api("/api/projects", {
+          method: "POST",
+          body: JSON.stringify({
+            title,
+            destination: form.querySelector("[name=destination]")?.value || "",
+          }),
+        });
+        location.hash = `#/project/${created.id}`;
+        return;
+      }
+      const body = form.querySelector("[name=body]")?.value || "";
+      const { _project, ...payload } = extra || {};
       const created = await api("/api/issues", {
         method: "POST",
-        body: JSON.stringify({ title, ...extra }),
+        body: JSON.stringify({ title, body, ...payload }),
       });
       location.hash = hrefFor(created);
     } catch (err) {
@@ -175,24 +255,31 @@ function bindCompose(extra, formId = "compose") {
   });
 }
 
+function bindProjectCompose(formId = "compose") {
+  bindCompose({ _project: true }, formId);
+}
+
 async function refreshStats() {
-  const [allData, labelData, health] = await Promise.all([
+  const [allData, labelData, health, projectData] = await Promise.all([
     api("/api/issues"),
     api("/api/labels"),
     api("/api/health"),
+    api("/api/projects"),
   ]);
   state.version = health.version || "";
   state.dataPath = health.data || "";
   const ver = $("#version");
   if (ver) ver.textContent = state.version ? "v" + state.version : "";
   const all = allData.issues || [];
-  const tickets = all.filter((i) => !isMap(i));
+  const tickets = all.filter((i) => !isArtifact(i));
+  state.projects = projectData.projects || [];
   state.stats = {
     all: tickets.length,
     total: all.length,
     open: tickets.filter((i) => i.state === "open").length,
     closed: tickets.filter((i) => i.state === "closed").length,
     maps: all.filter(isMap).length,
+    projects: state.projects.length,
     frontier: tickets.filter((i) => i.frontier).length,
     blocked: tickets.filter((i) => i.blocked && i.state === "open").length,
   };
@@ -219,6 +306,7 @@ function renderRail(extraHTML = "") {
         ["open", s.open],
         ["frontier", s.frontier],
         ["blocked", s.blocked],
+        ["projects", s.projects],
         ["maps", s.maps],
         ["closed", s.closed],
       ])
@@ -231,13 +319,19 @@ function renderRail(extraHTML = "") {
 }
 
 async function loadList() {
+  if (state.filter === "projects") {
+    const data = await api("/api/projects");
+    state.projects = data.projects || [];
+    if (state.selected >= state.projects.length) state.selected = 0;
+    return;
+  }
   const q = new URLSearchParams();
   if (state.filter === "open" || state.filter === "closed") q.set("state", state.filter);
   if (state.filter === "frontier") q.set("frontier", "1");
   if (state.filter === "maps") q.set("labels", "wayfinder:map");
   const data = await api("/api/issues?" + q.toString());
   const fetched = data.issues || [];
-  state.issues = state.filter === "maps" ? fetched : fetched.filter((i) => !isMap(i));
+  state.issues = state.filter === "maps" ? fetched : fetched.filter((i) => !isArtifact(i));
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
@@ -325,6 +419,30 @@ function groupedTicketHTML(groups, split = false) {
     .join("");
 }
 
+function stageLabel(stage) {
+  return String(stage || "").replace(/_/g, " ");
+}
+
+function projectHref(project) {
+  return `#/project/${project.id}`;
+}
+
+function projectRowHTML(project, selected = false, nav = false) {
+  const maps = (project.maps || []).length;
+  const specs = (project.specs || []).length;
+  const plans = (project.plans || []).length;
+  const dest = String(project.destination || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, 72);
+  return `<div class="row map-row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${project.id}">
+    <span class="map-mark">${esc(project.identifier || "P")}</span>
+    <a class="title" href="${projectHref(project)}">${esc(project.title)}</a>
+    <span class="meta">${esc(stageLabel(project.stage))}${dest ? " · " + esc(dest) : ""}</span>
+    <span class="mark">${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} plan${plans === 1 ? "" : "s"}</span>
+  </div>`;
+}
+
 function mapRowHTML(map, selected = false, nav = false) {
   const kids = map.children || [];
   const total = kids.length;
@@ -346,6 +464,7 @@ function statStrip() {
   const done = s.closed || 0;
   const pct = total ? Math.round((done / total) * 100) : 0;
   return `<div class="stats">
+    <div class="stat"><div class="stat-v">${s.projects || 0}</div><div class="stat-l">projects</div></div>
     <div class="stat"><div class="stat-v">${s.maps || 0}</div><div class="stat-l">maps</div></div>
     <div class="stat"><div class="stat-v">${s.open || 0}</div><div class="stat-l">open tickets</div></div>
     <div class="stat"><div class="stat-v">${done}</div><div class="stat-l">done</div></div>
@@ -378,11 +497,22 @@ function renderTagList(label) {
 async function loadTag(label) {
   const data = await api("/api/issues?" + new URLSearchParams({ labels: label }).toString());
   const fetched = data.issues || [];
-  state.issues = label === "wayfinder:map" ? fetched : fetched.filter((i) => !isMap(i));
+  state.issues = label === "wayfinder:map" ? fetched : fetched.filter((i) => !isArtifact(i));
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
 function renderList() {
+  if (state.filter === "projects") {
+    const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
+    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+      `<strong>projects</strong><span>decision map → spec → plan</span>`,
+      rows || `<div class="empty">no projects — compose one or create a map</div>`,
+      composeBar("new project", "compose", "project")
+    )}`;
+    bindProjectCompose();
+    syncChrome();
+    return;
+  }
   if (state.filter === "maps") {
     const rows = state.issues.map((issue, i) => mapRowHTML(issue, i === state.selected, true)).join("");
     main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
@@ -419,47 +549,139 @@ function renderList() {
   syncChrome();
 }
 
+function foldBox(id, title, extra, inner, footer = "") {
+  const open = homeFoldOpen(id);
+  const actions = extra && extra.includes("box-actions");
+  return `<section class="box fold${open ? "" : " is-closed"}">
+    <div class="box-h fold-h">
+      <button type="button" class="fold-bar" data-fold="${id}" aria-expanded="${open ? "true" : "false"}" aria-label="${open ? "collapse" : "expand"} ${title}">
+        <span class="fold-ch" aria-hidden="true">${open ? "▾" : "▸"}</span>
+        <strong>${title}</strong>
+        ${actions ? "" : extra || ""}
+      </button>
+      ${actions ? extra : ""}
+    </div>
+    <div class="fold-body"${open ? "" : " hidden"}>
+      <div class="box-b">${inner}</div>
+      ${footer}
+    </div>
+  </section>`;
+}
+
+function homeFolds() {
+  const defaults = { projects: true, maps: false, frontier: false };
+  try {
+    return { ...defaults, ...JSON.parse(localStorage.getItem("nl-home-fold-v2") || "{}") };
+  } catch {
+    return defaults;
+  }
+}
+
+function homeFoldOpen(id) {
+  return homeFolds()[id] !== false;
+}
+
+function setHomeFold(id, open) {
+  let saved = {};
+  try {
+    saved = JSON.parse(localStorage.getItem("nl-home-fold-v2") || "{}") || {};
+  } catch {
+    saved = {};
+  }
+  saved[id] = open;
+  localStorage.setItem("nl-home-fold-v2", JSON.stringify(saved));
+}
+
+function bindFolds() {
+  main.querySelectorAll(".fold").forEach((boxEl) => {
+    const btn = boxEl.querySelector("[data-fold]");
+    if (!btn) return;
+    const ch = btn.querySelector(".fold-ch");
+    const toggle = () => {
+      const body = boxEl.querySelector(".fold-body");
+      const open = body.hidden;
+      body.hidden = !open;
+      boxEl.classList.toggle("is-closed", !open);
+      btn.setAttribute("aria-expanded", String(open));
+      btn.setAttribute("aria-label", `${open ? "collapse" : "expand"} ${btn.dataset.fold}`);
+      if (ch) ch.textContent = open ? "▾" : "▸";
+      setHomeFold(btn.dataset.fold, open);
+    };
+    btn.addEventListener("click", (e) => {
+      e.preventDefault();
+      toggle();
+    });
+  });
+}
+
 async function renderHome() {
-  const [front, maps] = await Promise.all([
+  const [front, maps, projects] = await Promise.all([
     api("/api/issues?frontier=1"),
     api("/api/issues?labels=wayfinder:map"),
+    api("/api/projects"),
   ]);
-  const frontier = (front.issues || []).filter((i) => !isMap(i));
+  const frontier = (front.issues || []).filter((i) => !isArtifact(i));
   const mapList = maps.issues || [];
+  const projectList = projects.projects || [];
+  state.projects = projectList;
   const groups = groupTicketsByMap(frontier);
   state.issues = flattenGroups(groups);
   if (state.selected >= state.issues.length) state.selected = 0;
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${statStrip()}
-    ${box(
-      "<strong>frontier</strong><span>open, unblocked, and unclaimed</span>",
-      groupedTicketHTML(groups) || `<div class="empty">nothing on the frontier</div>`,
-      ticketHint()
+    ${foldBox(
+      "projects",
+      "projects",
+      `<span class="box-actions"><a href="#/" data-jump="projects">open projects view</a></span>`,
+      projectList.map((p) => projectRowHTML(p)).join("") || `<div class="empty">no projects</div>`,
+      composeBar("new project", "compose-project", "project")
     )}
-    ${box(
-      `<strong>maps</strong><span class="box-actions"><button type="button" data-import-map>import</button><a href="#/" data-jump="maps">open maps view</a></span>`,
+    ${foldBox(
+      "maps",
+      "maps",
+      `<span class="box-actions"><button type="button" data-import-map>import</button><a href="#/" data-jump="maps">open maps view</a></span>`,
       mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
       composeBar("new map")
+    )}
+    ${foldBox(
+      "frontier",
+      "frontier",
+      "<span>open, unblocked, and unclaimed</span>",
+      groupedTicketHTML(groups) || `<div class="empty">nothing on the frontier</div>`,
+      ticketHint()
     )}`;
   bindCompose({ labels: ["wayfinder:map"] });
-  const jump = main.querySelector("[data-jump=maps]");
-  if (jump) {
-    jump.addEventListener("click", (e) => {
-      e.preventDefault();
-      state.filter = "maps";
-      localStorage.setItem("nl-filter", "maps");
-      location.hash = "#/";
-      paint();
-    });
-  }
+  bindProjectCompose("compose-project");
+  bindJump("maps");
+  bindJump("projects");
+  bindFolds();
   syncChrome();
+}
+
+function bindJump(name) {
+  const jump = main.querySelector(`[data-jump=${name}]`);
+  if (!jump) return;
+  jump.addEventListener("click", (e) => {
+    e.preventDefault();
+    state.filter = name;
+    localStorage.setItem("nl-filter", name);
+    location.hash = "#/";
+    paint();
+  });
 }
 
 function goBack() {
   const r = route();
-  if (r.name === "issue") {
+  if (r.name === "issue" || r.name === "spec" || r.name === "plan") {
     location.hash = state.issueBackHref || "#/";
+    return;
+  }
+  if (r.name === "project") {
+    state.filter = "projects";
+    localStorage.setItem("nl-filter", "projects");
+    if (location.hash.replace(/^#/, "") === "/") paint();
+    else location.hash = "#/";
     return;
   }
   if (r.name === "map") {
@@ -501,15 +723,24 @@ function syncChrome() {
       return;
     }
     const onMap = r.name === "map" && b.dataset.filter === "maps";
-    b.classList.toggle("active", onMap || (r.name === "list" && b.dataset.filter === state.filter));
+    const onProject = r.name === "project" && b.dataset.filter === "projects";
+    b.classList.toggle("active", onMap || onProject || (r.name === "list" && b.dataset.filter === state.filter));
   });
   ensurePageBack();
 }
 
 async function renderMap(id) {
   let map;
+  let project = null;
   try {
     map = await api("/api/issues/" + id);
+    if (map.projectRef) {
+      try {
+        project = await api("/api/projects/" + map.projectRef.id);
+      } catch {
+        project = null;
+      }
+    }
     await loadMapChildren(id);
     state.error = "";
   } catch (err) {
@@ -527,22 +758,40 @@ async function renderMap(id) {
     state.mapChildFilter === "frontier"
       ? "nothing on the frontier — blocked and claimed tickets are under open"
       : "no tickets on this map";
-  const kids = (map.children || []).filter((c) => !isMap(c));
+  const kids = (map.children || []).filter((c) => !isArtifact(c));
   const linked = map.linked || [];
+  const specs = project ? project.specs || [] : [];
+  const hasSpec = specs.length > 0;
+  const life = map.lifecycle || "active";
+  const actions = [
+    life !== "ready_for_spec" && life !== "cleared" ? `<button data-act="ready-for-spec">ready for spec</button>` : "",
+    life === "ready_for_spec" && !hasSpec ? `<button data-act="create-spec">create spec</button>` : "",
+    life !== "cleared" ? `<button data-act="clear-route">route is clear</button>` : "",
+    `<button data-act="edit">edit map</button>`,
+    `<button data-act="export">export</button>`,
+    `<button data-act="delete" class="danger">delete map</button>`,
+  ]
+    .filter(Boolean)
+    .join("");
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${projectCrumb(map)}
     ${box(
-      `<strong>${esc(map.identifier)}</strong>${stamp(map.state === "closed" ? "closed" : "open", map.state === "closed" ? "closed lg" : "open lg")}`,
+      `<strong>${esc(map.identifier)}</strong>${stamp(life, map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(map.title)}</h1>
         <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
-        <div class="actions">
-          <button data-act="edit">edit map</button>
-          <button data-act="export">export</button>
-          <button data-act="delete" class="danger">delete map</button>
-        </div>
+        <div class="actions">${actions}</div>
       </div>`
     )}
+    ${
+      hasSpec
+        ? box(
+            "<strong>spec</strong>",
+            specs.map(artifactRowHTML).join("")
+          )
+        : ""
+    }
     ${box(
       `<strong>linked maps</strong><span>${linked.length ? linked.length : ""}</span>`,
       linked.map((m) => rowHTML(m, false, false)).join("") || `<div class="empty">none — start another session from this map</div>`,
@@ -572,6 +821,198 @@ async function renderMap(id) {
         ["frontier", kids.filter((c) => c.frontier).length],
         ["blocked", kids.filter((c) => c.blocked).length],
         ["linked", linked.length],
+      ])
+    )
+  );
+  syncChrome();
+}
+
+function projectCrumb(issue) {
+  const p = issue.projectRef;
+  if (!p) return "";
+  return `<div class="hint"><a href="#/project/${p.id}">${esc(p.identifier)}</a> ${esc(p.title)} · ${esc(p.stage || "")}</div>`;
+}
+
+function artifactRowHTML(issue) {
+  const src = issue.derivedFrom
+    ? `from <a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>`
+    : "";
+  return `<div class="row">
+    <a class="id" href="${hrefFor(issue)}">${issue.identifier}</a>
+    <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
+    <span class="meta">${src}</span>
+    <span class="mark">${statusStamp(issue)}</span>
+  </div>`;
+}
+
+async function renderProject(id) {
+  let project;
+  try {
+    project = await api("/api/projects/" + id);
+    state.error = "";
+  } catch (err) {
+    main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    return;
+  }
+  const dest = project.destination || "";
+  main.innerHTML = `
+    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${box(
+      `<strong>${esc(project.identifier)}</strong>${stamp(project.stage || "wayfinding", "open lg")}`,
+      `<div class="box-b pad">
+        <h1>${esc(project.title)}</h1>
+        <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
+      </div>`
+    )}
+    ${box(
+      "<strong>decision map</strong>",
+      (project.maps || []).map((m) => mapRowHTML(m)).join("") || `<div class="empty">no map</div>`
+    )}
+    ${box(
+      "<strong>spec</strong>",
+      (project.specs || []).map(artifactRowHTML).join("") || `<div class="empty">none — mark the map ready for spec</div>`
+    )}
+    ${box(
+      "<strong>implementation plan</strong>",
+      (project.plans || []).map(artifactRowHTML).join("") || `<div class="empty">none — approve a spec first</div>`
+    )}`;
+  renderRail(
+    box(
+      "<strong>this project</strong>",
+      railLines([
+        ["stage", project.stage || ""],
+        ["maps", (project.maps || []).length],
+        ["specs", (project.specs || []).length],
+        ["plans", (project.plans || []).length],
+      ])
+    )
+  );
+  syncChrome();
+}
+
+async function renderSpec(id) {
+  let issue;
+  let project = null;
+  try {
+    issue = await api("/api/issues/" + id);
+    if (issue.projectRef) {
+      try {
+        project = await api("/api/projects/" + issue.projectRef.id);
+      } catch {
+        project = null;
+      }
+    }
+    state.error = "";
+  } catch (err) {
+    main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    return;
+  }
+  if (!isSpec(issue)) {
+    location.replace(hrefFor(issue));
+    return;
+  }
+  state.issueBackHref = issue.projectRef ? `#/project/${issue.projectRef.id}` : "#/";
+  const plans = project ? project.plans || [] : [];
+  const hasPlan = plans.length > 0;
+  const actions = [
+    issue.lifecycle === "draft" ? `<button data-act="approve">approve spec</button>` : "",
+    issue.lifecycle === "approved" && !hasPlan ? `<button data-act="create-plan">create implementation plan</button>` : "",
+    `<button data-act="edit">edit</button>`,
+    `<button data-act="delete" class="danger">delete</button>`,
+  ]
+    .filter(Boolean)
+    .join("");
+  main.innerHTML = `
+    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${projectCrumb(issue)}
+    ${box(
+      `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
+      `<div class="box-b pad" id="issue-head">
+        <h1>${esc(issue.title)}</h1>
+        <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty spec — fill via /to-spec</span>`}</div>
+        <div class="actions">${actions}</div>
+      </div>`
+    )}
+    ${hasPlan ? box("<strong>implementation plan</strong>", plans.map(artifactRowHTML).join("")) : ""}`;
+  main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
+  renderRail(
+    box(
+      "<strong>this spec</strong>",
+      railLines([
+        ["lifecycle", issue.lifecycle || "draft"],
+        ["from", issue.derivedFrom ? `<a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>` : ""],
+      ])
+    )
+  );
+  syncChrome();
+}
+
+async function renderPlan(id) {
+  let issue;
+  try {
+    issue = await api("/api/issues/" + id);
+    await loadMapChildren(id);
+    state.error = "";
+  } catch (err) {
+    main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+    return;
+  }
+  if (!isPlan(issue)) {
+    location.replace(hrefFor(issue));
+    return;
+  }
+  state.issueBackHref = issue.projectRef ? `#/project/${issue.projectRef.id}` : "#/";
+  const filters = ["open", "frontier", "closed", "all"]
+    .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
+    .join("");
+  const split = state.mapChildFilter === "open" || state.mapChildFilter === "all";
+  const { html: rows } = sectionedTicketsHTML(state.issues, 0, split);
+  state.issues = flattenGroups([{ parent: null, tickets: state.issues }], split);
+  if (state.selected >= state.issues.length) state.selected = 0;
+  const kids = (issue.children || []).filter((c) => !isArtifact(c));
+  const life = issue.lifecycle || "draft";
+  const actions = [
+    life === "draft" ? `<button data-act="activate-plan">start implementation</button>` : "",
+    life === "active" ? `<button data-act="deliver-plan">mark delivered</button>` : "",
+    `<button data-act="edit">edit</button>`,
+    `<button data-act="delete" class="danger">delete</button>`,
+  ]
+    .filter(Boolean)
+    .join("");
+  main.innerHTML = `
+    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${projectCrumb(issue)}
+    ${box(
+      `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
+      `<div class="box-b pad" id="issue-head">
+        <h1>${esc(issue.title)}</h1>
+        <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty plan — fill via /to-tickets</span>`}</div>
+        <div class="actions">${actions}</div>
+      </div>`
+    )}
+    ${relationBox("blocked by", sortRelations(issue.blockers), "not blocked")}
+    ${box(
+      `<strong>tickets</strong><div class="subnav">${filters}</div>`,
+      rows || `<div class="empty">no tickets on this plan</div>`,
+      composeBar("new ticket on this plan")
+    )}`;
+  bindCompose({ parentId: issue.id });
+  main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
+  main.querySelectorAll("[data-map-filter]").forEach((b) => {
+    b.addEventListener("click", () => {
+      state.mapChildFilter = b.dataset.mapFilter;
+      localStorage.setItem("nl-map-filter", state.mapChildFilter);
+      paint();
+    });
+  });
+  renderRail(
+    box(
+      "<strong>this plan</strong>",
+      railLines([
+        ["lifecycle", life],
+        ["tickets", kids.length],
+        ["frontier", kids.filter((c) => c.frontier).length],
+        ["from", issue.derivedFrom ? `<a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>` : ""],
       ])
     )
   );
@@ -689,6 +1130,14 @@ async function renderIssue(id) {
   }
   if (isMap(issue)) {
     location.replace(`#/map/${issue.id}`);
+    return;
+  }
+  if (isSpec(issue)) {
+    location.replace(`#/spec/${issue.id}`);
+    return;
+  }
+  if (isPlan(issue)) {
+    location.replace(`#/plan/${issue.id}`);
     return;
   }
   state.issueBackHref = backHref(issue);
@@ -836,9 +1285,36 @@ async function act(issue, kind) {
       await downloadMap(issue);
       return;
     }
+    if (kind === "ready-for-spec") {
+      await api(`/api/issues/${issue.id}/ready-for-spec`, { method: "POST", body: "{}" });
+    }
+    if (kind === "clear-route") {
+      await api(`/api/issues/${issue.id}/clear-route`, { method: "POST", body: "{}" });
+    }
+    if (kind === "create-spec") {
+      const spec = await api(`/api/issues/${issue.id}/create-spec`, { method: "POST", body: "{}" });
+      location.hash = hrefFor(spec);
+      await paint();
+      return;
+    }
+    if (kind === "approve") {
+      await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
+    }
+    if (kind === "create-plan") {
+      const plan = await api(`/api/issues/${issue.id}/create-plan`, { method: "POST", body: "{}" });
+      location.hash = hrefFor(plan);
+      await paint();
+      return;
+    }
+    if (kind === "activate-plan") {
+      await api(`/api/issues/${issue.id}/activate-plan`, { method: "POST", body: "{}" });
+    }
+    if (kind === "deliver-plan") {
+      await api(`/api/issues/${issue.id}/deliver-plan`, { method: "POST", body: "{}" });
+    }
     if (kind === "delete") {
       const kids = (issue.children || []).length;
-      const label = isMap(issue) ? "map" : "issue";
+      const label = isMap(issue) ? "map" : isSpec(issue) ? "spec" : isPlan(issue) ? "plan" : "issue";
       const extra = kids ? " and all children" : "";
       if (!confirm(`delete ${label} ${issue.identifier}${extra}?`)) return;
       await api(`/api/issues/${issue.id}`, { method: "DELETE" });
@@ -912,6 +1388,18 @@ async function paint() {
       await renderMap(r.id);
       return;
     }
+    if (r.name === "project") {
+      await renderProject(r.id);
+      return;
+    }
+    if (r.name === "spec") {
+      await renderSpec(r.id);
+      return;
+    }
+    if (r.name === "plan") {
+      await renderPlan(r.id);
+      return;
+    }
     await renderIssue(r.id);
   } finally {
     ensurePageBack();
@@ -920,12 +1408,14 @@ async function paint() {
 
 async function renderSearch(query) {
   let mapList = [];
+  let extras = [];
   let groups = [];
   try {
     const data = await api("/api/issues?" + new URLSearchParams({ query }).toString());
     const all = data.issues || [];
     mapList = all.filter(isMap);
-    groups = groupTicketsByMap(all.filter((i) => !isMap(i)));
+    extras = all.filter((i) => isSpec(i) || isPlan(i));
+    groups = groupTicketsByMap(all.filter((i) => !isArtifact(i)));
     state.issues = flattenGroups(groups, true);
     if (state.selected >= state.issues.length) state.selected = 0;
     state.error = "";
@@ -933,12 +1423,12 @@ async function renderSearch(query) {
     state.error = err.message;
     state.issues = [];
   }
-  const n = mapList.length + state.issues.length;
+  const n = mapList.length + extras.length + state.issues.length;
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
       `<strong>search</strong><span>${esc(query)} · ${n} match${n === 1 ? "" : "es"}</span><a href="#/" class="muted">clear</a>`,
-      mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps match</div>`
+      [...mapList.map((m) => mapRowHTML(m)), ...extras.map(artifactRowHTML)].join("") || `<div class="empty">no maps match</div>`
     )}
     ${box(
       `<strong>tickets</strong><span>by map</span>`,
@@ -956,6 +1446,7 @@ function renderSettings() {
       <div class="settings-meta">
         <div class="rail-line">version <b id="shown-version">${esc(state.version)}</b></div>
         <div class="rail-line">issues <b>${s.total ?? s.all}</b></div>
+        <div class="rail-line">projects <b>${s.projects || 0}</b></div>
         <div class="rail-line">tickets <b>${s.all}</b></div>
         <div class="rail-line">maps <b>${s.maps}</b></div>
         <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
@@ -1066,7 +1557,7 @@ window.addEventListener("keydown", (e) => {
     paint();
     return;
   }
-  if (r.name === "issue") {
+  if (r.name === "issue" || r.name === "spec" || r.name === "plan") {
     if (e.key === "Escape") {
       if (main.querySelector("[data-comment-editing], [data-save]")) {
         paint();
@@ -1077,22 +1568,25 @@ window.addEventListener("keydown", (e) => {
     return;
   }
   if (e.key === "j") {
-    state.selected = Math.min(Math.max(state.issues.length - 1, 0), state.selected + 1);
+    const items = listCursor();
+    state.selected = Math.min(Math.max(items.length - 1, 0), state.selected + 1);
     highlightSelected();
   }
   if (e.key === "k") {
     state.selected = Math.max(0, state.selected - 1);
     highlightSelected();
   }
-  if (e.key === "Enter" && state.issues[state.selected]) {
-    location.hash = hrefFor(state.issues[state.selected]);
+  if (e.key === "Enter") {
+    const items = listCursor();
+    const item = items[state.selected];
+    if (item) location.hash = listHref(item);
   }
   if (e.key === "/") {
     e.preventDefault();
     const input = $("#global-search");
     if (input) input.focus();
   }
-  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings" || r.name === "search")) goBack();
+  if (e.key === "Escape" && (r.name === "map" || r.name === "tag" || r.name === "settings" || r.name === "search" || r.name === "project")) goBack();
 });
 
 const THEMES = { orange: "#e85d04", matrix: "#00e64d", cool: "#5ba8e8" };

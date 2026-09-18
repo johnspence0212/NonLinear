@@ -34,32 +34,38 @@ type Comment struct {
 }
 
 type Issue struct {
-	ID         int       `json:"id"`
-	Identifier string    `json:"identifier"`
-	Title      string    `json:"title"`
-	Body       string    `json:"body"`
-	State      string    `json:"state"`
-	Labels     []string  `json:"labels"`
-	Assignee   *string   `json:"assignee"`
-	ParentID   *int      `json:"parentId"`
-	BlockedBy  []int     `json:"blockedBy"`
-	LinkedMaps []int     `json:"linkedMaps"`
-	Project    string    `json:"project"`
-	CreatedAt  time.Time `json:"createdAt"`
-	UpdatedAt  time.Time `json:"updatedAt"`
-	Comments   []Comment `json:"comments"`
+	ID                    int       `json:"id"`
+	Identifier            string    `json:"identifier"`
+	Title                 string    `json:"title"`
+	Body                  string    `json:"body"`
+	State                 string    `json:"state"`
+	Labels                []string  `json:"labels"`
+	Assignee              *string   `json:"assignee"`
+	ParentID              *int      `json:"parentId"`
+	BlockedBy             []int     `json:"blockedBy"`
+	LinkedMaps            []int     `json:"linkedMaps"`
+	Project               string    `json:"project"`
+	Kind                  string    `json:"kind,omitempty"`
+	ProjectID             *int      `json:"projectId,omitempty"`
+	Lifecycle             string    `json:"lifecycle,omitempty"`
+	DerivedFromArtifactID *int      `json:"derivedFromArtifactId,omitempty"`
+	CreatedAt             time.Time `json:"createdAt"`
+	UpdatedAt             time.Time `json:"updatedAt"`
+	Comments              []Comment `json:"comments"`
 }
 
 type IssueView struct {
 	Issue
-	Frontier     bool           `json:"frontier"`
-	Blocked      bool           `json:"blocked"`
-	OpenBlockers int            `json:"openBlockers"`
-	Children     []IssueSummary `json:"children,omitempty"`
-	Blockers     []IssueSummary `json:"blockers,omitempty"`
-	Blocks       []IssueSummary `json:"blocks,omitempty"`
-	Linked       []IssueSummary `json:"linked,omitempty"`
-	Parent       *IssueSummary  `json:"parent,omitempty"`
+	Frontier     bool            `json:"frontier"`
+	Blocked      bool            `json:"blocked"`
+	OpenBlockers int             `json:"openBlockers"`
+	Children     []IssueSummary  `json:"children,omitempty"`
+	Blockers     []IssueSummary  `json:"blockers,omitempty"`
+	Blocks       []IssueSummary  `json:"blocks,omitempty"`
+	Linked       []IssueSummary  `json:"linked,omitempty"`
+	Parent       *IssueSummary   `json:"parent,omitempty"`
+	DerivedFrom  *IssueSummary   `json:"derivedFrom,omitempty"`
+	ProjectRef   *ProjectSummary `json:"projectRef,omitempty"`
 }
 
 type IssueSummary struct {
@@ -67,6 +73,8 @@ type IssueSummary struct {
 	Identifier   string   `json:"identifier"`
 	Title        string   `json:"title"`
 	State        string   `json:"state"`
+	Kind         string   `json:"kind,omitempty"`
+	Lifecycle    string   `json:"lifecycle,omitempty"`
 	Labels       []string `json:"labels"`
 	Assignee     *string  `json:"assignee"`
 	Frontier     bool     `json:"frontier"`
@@ -75,10 +83,13 @@ type IssueSummary struct {
 }
 
 type DB struct {
-	NextID int      `json:"nextId"`
-	Prefix string   `json:"prefix"`
-	Issues []Issue  `json:"issues"`
-	Labels []string `json:"labels,omitempty"`
+	SchemaVersion int       `json:"schemaVersion,omitempty"`
+	NextID        int       `json:"nextId"`
+	NextProjectID int       `json:"nextProjectId"`
+	Prefix        string    `json:"prefix"`
+	Issues        []Issue   `json:"issues"`
+	Labels        []string  `json:"labels,omitempty"`
+	Projects      []Project `json:"projects"`
 }
 
 func CloneIssue(in Issue) Issue {
@@ -94,6 +105,14 @@ func CloneIssue(in Issue) Issue {
 	if in.ParentID != nil {
 		v := *in.ParentID
 		out.ParentID = &v
+	}
+	if in.ProjectID != nil {
+		v := *in.ProjectID
+		out.ProjectID = &v
+	}
+	if in.DerivedFromArtifactID != nil {
+		v := *in.DerivedFromArtifactID
+		out.DerivedFromArtifactID = &v
 	}
 	if out.Labels == nil {
 		out.Labels = []string{}
@@ -142,14 +161,14 @@ func IsBlocked(issue Issue, byID map[int]Issue) bool {
 }
 
 func IsMap(issue Issue) bool {
-	return HasLabel(issue, "wayfinder:map")
+	return issue.Kind == KindDecisionMap || HasLabel(issue, "wayfinder:map")
 }
 
 func IsFrontier(issue Issue, byID map[int]Issue) bool {
 	if issue.State != StateOpen {
 		return false
 	}
-	if IsMap(issue) {
+	if IsMap(issue) || IsSpec(issue) || IsPlan(issue) {
 		return false
 	}
 	if AssigneeValue(issue) != "" {
@@ -164,6 +183,8 @@ func Summarize(issue Issue, byID map[int]Issue) IssueSummary {
 		Identifier:   issue.Identifier,
 		Title:        issue.Title,
 		State:        issue.State,
+		Kind:         issue.Kind,
+		Lifecycle:    issue.Lifecycle,
 		Labels:       append([]string(nil), issue.Labels...),
 		Assignee:     issue.Assignee,
 		Frontier:     IsFrontier(issue, byID),
@@ -187,6 +208,12 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		if parent, ok := byID[*issue.ParentID]; ok {
 			s := Summarize(parent, byID)
 			v.Parent = &s
+		}
+	}
+	if issue.DerivedFromArtifactID != nil {
+		if src, ok := byID[*issue.DerivedFromArtifactID]; ok {
+			s := Summarize(src, byID)
+			v.DerivedFrom = &s
 		}
 	}
 	for _, other := range byID {

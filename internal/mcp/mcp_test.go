@@ -323,6 +323,76 @@ func TestMCPLinkedMaps(t *testing.T) {
 	}
 }
 
+func TestMCPProjectLifecycle(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":  "Map",
+			"labels": []string{"wayfinder:map"},
+			"body":   "## Destination\n\nShip.\n",
+		},
+	})
+	if err != nil || created.IsError {
+		t.Fatalf("%v %v", err, created)
+	}
+	mapID := int(toolJSON(t, created)["id"].(float64))
+
+	ready, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "ready_for_spec",
+		Arguments: map[string]any{"id": mapID},
+	})
+	if err != nil || ready.IsError {
+		t.Fatalf("ready: %v %v", err, ready)
+	}
+	spec, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_spec",
+		Arguments: map[string]any{"id": mapID},
+	})
+	if err != nil || spec.IsError {
+		t.Fatalf("spec: %v %v", err, spec)
+	}
+	specID := int(toolJSON(t, spec)["id"].(float64))
+	approved, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "approve_spec",
+		Arguments: map[string]any{"id": specID},
+	})
+	if err != nil || approved.IsError {
+		t.Fatalf("approve: %v %v", err, approved)
+	}
+	plan, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_plan",
+		Arguments: map[string]any{"id": specID},
+	})
+	if err != nil || plan.IsError {
+		t.Fatalf("plan: %v %v", err, plan)
+	}
+	if toolJSON(t, plan)["kind"] != "plan" {
+		t.Fatalf("plan: %v", toolJSON(t, plan))
+	}
+	listed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_projects", Arguments: map[string]any{}})
+	if err != nil || listed.IsError {
+		t.Fatalf("list: %v %v", err, listed)
+	}
+}
+
 func toolJSON(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(res.StructuredContent)

@@ -99,23 +99,41 @@ Wayfinder operations on this tracker:
 
 The map UI shows children as a tree: `*` frontier, `.` blocked, `@` claimed, `x` closed. Blocked tickets list what they wait on. Opening a ticket shows **blocked by** (and **blocks**) as clickable rows.
 
+## Project lifecycle
+
+A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementation Plan. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
+
+| Move | MCP tool |
+| --- | --- |
+| List / get / create project | `list_projects`, `get_project`, `create_project` |
+| Map ready for spec | `ready_for_spec` |
+| Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
+| Approve spec | `approve_spec` |
+| Create implementation plan (does not run `/to-tickets`) | `create_plan` |
+| Start / deliver plan | `activate_plan`, `deliver_plan` |
+| Route is clear | `clear_route` |
+
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `ready_for_spec`, `create_spec`, `approve_spec`, `create_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
 `GET /api/health` returns `{ ok, version, data, issues }` so a later client can detect an update. The UI footer and **settings** show the same version. Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
 
 ## Views
 
-Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map + maps). Maps are the parent object: every ticket belongs to a map and is always shown under its map header. Opening a map is `#/map/12` with its own open/frontier/closed/all filters. From a map you can start another map as a **linked map**: both stay top-level (delete does not cascade) and each shows the other.
+Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Map → Spec → Plan. Maps still open at `#/map/12`. From a map you can start another map as a **linked map**: both stay top-level (delete does not cascade) and each shows the other.
 
 | View | Shows |
 | --- | --- |
-| `home` | Stats strip (maps / open / done / % complete), frontier tickets grouped by map, plus maps with per-map progress bars (and a new-map box) |
+| `home` | Stats strip, then collapsible **projects**, **maps**, and **frontier** (open/unclaimed tickets grouped by map) |
+| `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `maps` | Wayfinder maps only (with a new-map box and import) |
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
-| `frontier` | Only frontier tickets: open, unblocked, unclaimed |
+| `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
 | `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
+| `#/project/{id}` | Project destination, derived stage, Decision Map / Spec / Plan rows |
+| `#/spec/{id}` | Spec body, approve, create implementation plan |
+| `#/plan/{id}` | Plan body plus ticket list / compose / blockers (same as a map's tickets) |
 | `settings` | Version, data path, import a map file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.

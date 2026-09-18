@@ -1,0 +1,78 @@
+{
+  "nextId": 5,
+  "prefix": "NL",
+  "issues": [
+    {
+      "id": 1,
+      "identifier": "NL-1",
+      "title": "TUI map",
+      "body": "## Destination\n\nShip a TUI.\n\n## Notes\n\nStart here.\n",
+      "state": "open",
+      "labels": ["wayfinder:map"],
+      "assignee": null,
+      "parentId": null,
+      "blockedBy": [],
+      "linkedMaps": [3],
+      "project": "inbox",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-02T00:00:00Z",
+      "comments": [
+        {
+          "id": "c1",
+          "author": "human",
+          "body": "kickoff",
+          "createdAt": "2026-01-01T01:00:00Z"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "identifier": "NL-2",
+      "title": "What renderer?",
+      "body": "Pick a rendering approach.",
+      "state": "open",
+      "labels": ["wayfinder:grilling", "ready-for-agent"],
+      "assignee": "cursor",
+      "parentId": 1,
+      "blockedBy": [],
+      "linkedMaps": [],
+      "project": "inbox",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "comments": []
+    },
+    {
+      "id": 3,
+      "identifier": "NL-3",
+      "title": "Linked session",
+      "body": "",
+      "state": "open",
+      "labels": ["wayfinder:map"],
+      "assignee": null,
+      "parentId": null,
+      "blockedBy": [],
+      "linkedMaps": [1],
+      "project": "inbox",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "comments": []
+    },
+    {
+      "id": 4,
+      "identifier": "NL-4",
+      "title": "Blocked child",
+      "body": "",
+      "state": "open",
+      "labels": ["wayfinder:task"],
+      "assignee": null,
+      "parentId": 1,
+      "blockedBy": [2],
+      "linkedMaps": [],
+      "project": "inbox",
+      "createdAt": "2026-01-01T00:00:00Z",
+      "updatedAt": "2026-01-01T00:00:00Z",
+      "comments": []
+    }
+  ],
+  "labels": ["wayfinder:map", "custom-tag"]
+}

@@ -20,6 +20,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.health)
 	mux.HandleFunc("GET /api/labels", h.labels)
 	mux.HandleFunc("POST /api/labels", h.createLabel)
+	mux.HandleFunc("GET /api/projects", h.listProjects)
+	mux.HandleFunc("POST /api/projects", h.createProject)
+	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
 	mux.HandleFunc("GET /api/issues", h.list)
 	mux.HandleFunc("POST /api/issues", h.create)
 	mux.HandleFunc("GET /api/frontier", h.frontier)
@@ -32,6 +35,13 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/issues/{id}/labels", h.addLabel)
 	mux.HandleFunc("POST /api/issues/{id}/claim", h.claim)
 	mux.HandleFunc("POST /api/issues/{id}/resolve", h.resolve)
+	mux.HandleFunc("POST /api/issues/{id}/ready-for-spec", h.readyForSpec)
+	mux.HandleFunc("POST /api/issues/{id}/clear-route", h.clearRoute)
+	mux.HandleFunc("POST /api/issues/{id}/create-spec", h.createSpec)
+	mux.HandleFunc("POST /api/issues/{id}/approve", h.approveSpec)
+	mux.HandleFunc("POST /api/issues/{id}/create-plan", h.createPlan)
+	mux.HandleFunc("POST /api/issues/{id}/activate-plan", h.activatePlan)
+	mux.HandleFunc("POST /api/issues/{id}/deliver-plan", h.deliverPlan)
 	mux.HandleFunc("DELETE /api/issues/{id}", h.delete)
 	mux.HandleFunc("GET /api/issues/{id}/export", h.exportMap)
 	mux.HandleFunc("POST /api/import", h.importMap)
@@ -383,6 +393,93 @@ func (h *Handler) wipe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"ok": true, "deleted": n, "version": version.Version})
+}
+
+func (h *Handler) listProjects(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]any{"projects": h.Store.ListProjects()})
+}
+
+func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	project, err := h.Store.GetProject(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
+}
+
+func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Title       string `json:"title"`
+		Destination string `json:"destination"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	project, err := h.Store.CreateProject(store.CreateProject{Title: body.Title, Destination: body.Destination})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, project)
+}
+
+func (h *Handler) readyForSpec(w http.ResponseWriter, r *http.Request) {
+	h.issueAction(w, r, h.Store.ReadyForSpec)
+}
+
+func (h *Handler) clearRoute(w http.ResponseWriter, r *http.Request) {
+	h.issueAction(w, r, h.Store.ClearRoute)
+}
+
+func (h *Handler) createSpec(w http.ResponseWriter, r *http.Request) {
+	h.issueActionCreated(w, r, h.Store.CreateSpec)
+}
+
+func (h *Handler) approveSpec(w http.ResponseWriter, r *http.Request) {
+	h.issueAction(w, r, h.Store.ApproveSpec)
+}
+
+func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
+	h.issueActionCreated(w, r, h.Store.CreatePlan)
+}
+
+func (h *Handler) activatePlan(w http.ResponseWriter, r *http.Request) {
+	h.issueAction(w, r, h.Store.ActivatePlan)
+}
+
+func (h *Handler) deliverPlan(w http.ResponseWriter, r *http.Request) {
+	h.issueAction(w, r, h.Store.DeliverPlan)
+}
+
+func (h *Handler) issueAction(w http.ResponseWriter, r *http.Request, fn func(int) (model.IssueView, error)) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	issue, err := fn(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, issue)
+}
+
+func (h *Handler) issueActionCreated(w http.ResponseWriter, r *http.Request, fn func(int) (model.IssueView, error)) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	issue, err := fn(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusCreated, issue)
 }
 
 func pathID(w http.ResponseWriter, r *http.Request) (int, bool) {

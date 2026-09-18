@@ -3,7 +3,6 @@ package store
 import (
 	"crypto/rand"
 	"encoding/hex"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"os"
@@ -24,9 +23,10 @@ var (
 )
 
 type Store struct {
-	path string
-	mu   sync.Mutex
-	db   model.DB
+	path  string
+	mu    sync.Mutex
+	db    model.DB
+	extra leftover
 }
 
 type ListFilter struct {
@@ -65,7 +65,7 @@ func Open(path string) (*Store, error) {
 	}
 	s := &Store{path: path}
 	if _, err := os.Stat(path); errors.Is(err, os.ErrNotExist) {
-		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}, Labels: []string{}}
+		s.db = emptyDB()
 		if err := s.saveLocked(); err != nil {
 			return nil, err
 		}
@@ -78,24 +78,15 @@ func Open(path string) (*Store, error) {
 		return nil, err
 	}
 	if len(strings.TrimSpace(string(raw))) == 0 {
-		s.db = model.DB{NextID: 1, Prefix: model.DefaultPrefix, Issues: []model.Issue{}, Labels: []string{}}
+		s.db = emptyDB()
 		return s, s.saveLocked()
 	}
-	if err := json.Unmarshal(raw, &s.db); err != nil {
-		return nil, fmt.Errorf("parse db: %w", err)
+	db, extra, err := DecodeDocument(raw)
+	if err != nil {
+		return nil, err
 	}
-	if s.db.Prefix == "" {
-		s.db.Prefix = model.DefaultPrefix
-	}
-	if s.db.NextID < 1 {
-		s.db.NextID = 1
-	}
-	if s.db.Issues == nil {
-		s.db.Issues = []model.Issue{}
-	}
-	if s.db.Labels == nil {
-		s.db.Labels = []string{}
-	}
+	s.db = db
+	s.extra = extra
 	return s, nil
 }
 
@@ -151,7 +142,9 @@ func (s *Store) Wipe() (int, error) {
 	n := len(s.db.Issues)
 	s.db.Issues = []model.Issue{}
 	s.db.Labels = []string{}
+	s.db.Projects = []model.Project{}
 	s.db.NextID = 1
+	s.db.NextProjectID = 1
 	return n, s.saveLocked()
 }
 
@@ -283,12 +276,12 @@ func (s *Store) ImportMap(bundle model.MapBundle) (ImportResult, error) {
 		return ImportResult{}, ErrParentCycle
 	}
 	s.db.Issues = append(s.db.Issues, imported...)
+	NormalizeDocument(&s.db)
 	if err := s.saveLocked(); err != nil {
 		return ImportResult{}, err
 	}
-	byID := s.byIDLocked()
 	return ImportResult{
-		Map:     model.View(byID[rootNew], byID),
+		Map:     s.viewLocked(s.byIDLocked()[rootNew]),
 		Created: created,
 	}, nil
 }
@@ -456,7 +449,7 @@ func (s *Store) AddLabel(id int, name string) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) labelsLocked() []string {
@@ -510,7 +503,7 @@ func (s *Store) List(filter ListFilter) []model.IssueView {
 		if !match(issue, filter, byID) {
 			continue
 		}
-		out = append(out, model.View(issue, byID))
+		out = append(out, s.viewLocked(issue))
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out
@@ -524,7 +517,7 @@ func (s *Store) Get(id int) (model.IssueView, error) {
 	if !ok {
 		return model.IssueView{}, ErrNotFound
 	}
-	return model.View(issue, byID), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
@@ -579,7 +572,14 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		UpdatedAt:  now,
 		Comments:   []model.Comment{},
 	}
+	if in.ParentID != nil {
+		if parent, ok := s.findLocked(*in.ParentID); ok && parent.ProjectID != nil {
+			pid := *parent.ProjectID
+			issue.ProjectID = &pid
+		}
+	}
 	s.db.Issues = append(s.db.Issues, issue)
+	s.ensureMapProjectLocked(len(s.db.Issues) - 1)
 	if in.LinkedMapID != nil {
 		if err := s.setLinkedMapsLocked(id, []int{*in.LinkedMapID}); err != nil {
 			return model.IssueView{}, err
@@ -588,7 +588,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(s.byIDLocked()[id], s.byIDLocked()), nil
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
@@ -645,10 +645,11 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	}
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	s.ensureMapProjectLocked(idx)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) {
@@ -679,7 +680,7 @@ func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) 
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
@@ -691,7 +692,7 @@ func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(s.byIDLocked()[id], s.byIDLocked()), nil
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) setLinkedMapsLocked(id int, mapIDs []int) error {
@@ -778,7 +779,7 @@ func (s *Store) AddComment(id int, author, body string) (model.IssueView, error)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, error) {
@@ -813,7 +814,7 @@ func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, 
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return model.View(issue, s.byIDLocked()), nil
+	return s.viewLocked(issue), nil
 }
 
 func (s *Store) Claim(id int, assignee string) (model.IssueView, error) {
@@ -920,13 +921,7 @@ func (s *Store) wouldCycleLocked(id, parent int) bool {
 }
 
 func (s *Store) saveLocked() error {
-	if s.db.Issues == nil {
-		s.db.Issues = []model.Issue{}
-	}
-	if s.db.Labels == nil {
-		s.db.Labels = []string{}
-	}
-	raw, err := json.MarshalIndent(s.db, "", "  ")
+	raw, err := EncodeDocument(s.db, s.extra)
 	if err != nil {
 		return err
 	}

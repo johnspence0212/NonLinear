@@ -48,3 +48,16 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Export a map**: `export_map` with the map `id`. Returns a `nonlinear.map` JSON bundle (map + descendants, comments, in-map `blockedBy`). Blocked-by edges that pointed outside the map are dropped.
 - **Import a map**: `import_map` with that bundle. Allocates new ids and remaps parent / blocked-by edges. The imported map is always top-level. Importing twice creates two maps.
 - **Wipe the tracker**: `wipe_db` with `confirm: true`. Resets ids so the next issue is NL-1. Irreversible.
+
+## Project lifecycle
+
+A **Project** (`P-{id}`) parents a Decision Map → Spec → Implementation Plan. Stage is derived (never stored). Tags are classification only. Skill runs (`/to-spec`, `/to-tickets`) are a handoff; do not expect NonLinear to fill the document.
+
+- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Standalone maps wrap in an implicit Project whose id equals the map id.
+- **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.
+- **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.
+- **Approve spec**: `approve_spec` with the spec `id`.
+- **Create plan**: `create_plan` with an approved spec `id`. Draft plan; implementation tickets are children (`parentId` = plan id). Same `blockedBy` / claim / frontier rules as map tickets.
+- **Activate / deliver**: `activate_plan` then `deliver_plan` with the plan `id`. Explicit complete; not inferred from zero open tickets.
+- **Route is clear**: `clear_route` with the map `id`. Does not create a spec.
+
