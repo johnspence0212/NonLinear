@@ -297,3 +297,122 @@ func mustPlan(t *testing.T, s *Store) model.IssueView {
 	}
 	return plan
 }
+
+func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	child, err := s.Create(CreateIssue{Title: "Lock class", ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	dest, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	srcID := *m.ProjectID
+	if srcID == dest.ID {
+		t.Fatal("expected implicit project distinct from dest")
+	}
+	got, err := s.MoveToProject(MoveToProject{ID: &m.ID, ProjectID: dest.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Moved) != 2 {
+		t.Fatalf("moved %v", got.Moved)
+	}
+	for _, id := range []int{m.ID, child.ID} {
+		issue, err := s.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issue.ProjectID == nil || *issue.ProjectID != dest.ID {
+			t.Fatalf("issue %d projectId %v want %d", id, issue.ProjectID, dest.ID)
+		}
+	}
+	src, err := s.GetProject(srcID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(src.Maps) != 0 {
+		t.Fatalf("source still has maps: %+v", src.Maps)
+	}
+}
+
+func TestMoveAllIssuesFromProject(t *testing.T) {
+	s := testStore(t)
+	m := mustMapReady(t, s)
+	spec, err := s.CreateSpec(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	from := *m.ProjectID
+	dest, err := s.CreateProject(CreateProject{Title: "Home"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.MoveToProject(MoveToProject{FromProjectID: &from, ProjectID: dest.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Moved) != 2 {
+		t.Fatalf("moved %v", got.Moved)
+	}
+	for _, id := range []int{m.ID, spec.ID} {
+		issue, err := s.Get(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if issue.ProjectID == nil || *issue.ProjectID != dest.ID {
+			t.Fatalf("issue %d projectId %v want %d", id, issue.ProjectID, dest.ID)
+		}
+	}
+}
+
+func TestDeleteProjectRemovesIssues(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	if _, err := s.Create(CreateIssue{Title: "Lock class", ParentID: &parent}); err != nil {
+		t.Fatal(err)
+	}
+	pid := *m.ProjectID
+	got, err := s.DeleteProject(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Deleted) != 2 {
+		t.Fatalf("deleted %v", got.Deleted)
+	}
+	if _, err := s.GetProject(pid); err == nil {
+		t.Fatal("expected project gone")
+	}
+	if _, err := s.Get(m.ID); err == nil {
+		t.Fatal("expected map gone")
+	}
+}
+
+func TestDeleteEmptyProject(t *testing.T) {
+	s := testStore(t)
+	p, err := s.CreateProject(CreateProject{Title: "Spare"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.DeleteProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Deleted) != 0 {
+		t.Fatalf("deleted %v", got.Deleted)
+	}
+	if _, err := s.GetProject(p.ID); err == nil {
+		t.Fatal("expected project gone")
+	}
+}
+

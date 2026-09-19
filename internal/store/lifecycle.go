@@ -160,6 +160,110 @@ func (s *Store) CreateProject(in CreateProject) (model.ProjectView, error) {
 	return s.projectViewLocked(p), nil
 }
 
+type MoveToProject struct {
+	ID            *int
+	FromProjectID *int
+	ProjectID     int
+}
+
+type MoveResult struct {
+	Moved   []int             `json:"moved"`
+	Project model.ProjectView `json:"project"`
+}
+
+func (s *Store) MoveToProject(in MoveToProject) (MoveResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	dest := s.findProjectLocked(in.ProjectID)
+	if dest == nil {
+		return MoveResult{}, fmt.Errorf("%w: project %d", ErrNotFound, in.ProjectID)
+	}
+	if in.ID == nil && in.FromProjectID == nil {
+		return MoveResult{}, fmt.Errorf("%w: id or fromProjectId is required", ErrInvalid)
+	}
+	ids := map[int]bool{}
+	if in.ID != nil {
+		if _, ok := s.findLocked(*in.ID); !ok {
+			return MoveResult{}, ErrNotFound
+		}
+		for _, did := range s.descendantsLocked(*in.ID) {
+			ids[did] = true
+		}
+	}
+	if in.FromProjectID != nil {
+		if s.findProjectLocked(*in.FromProjectID) == nil {
+			return MoveResult{}, fmt.Errorf("%w: project %d", ErrNotFound, *in.FromProjectID)
+		}
+		for _, issue := range s.issuesForProjectLocked(*in.FromProjectID) {
+			for _, did := range s.descendantsLocked(issue.ID) {
+				ids[did] = true
+			}
+		}
+	}
+	now := time.Now().UTC()
+	pid := dest.ID
+	if in.FromProjectID != nil {
+		if src := s.findProjectLocked(*in.FromProjectID); src != nil && strings.TrimSpace(dest.Destination) == "" && strings.TrimSpace(src.Destination) != "" {
+			dest.Destination = src.Destination
+			dest.UpdatedAt = now
+		}
+	}
+	moved := make([]int, 0, len(ids))
+	for i := range s.db.Issues {
+		if !ids[s.db.Issues[i].ID] {
+			continue
+		}
+		s.db.Issues[i].ProjectID = &pid
+		s.db.Issues[i].UpdatedAt = now
+		moved = append(moved, s.db.Issues[i].ID)
+	}
+	sort.Ints(moved)
+	if err := s.saveLocked(); err != nil {
+		return MoveResult{}, err
+	}
+	return MoveResult{Moved: moved, Project: s.projectViewLocked(*s.findProjectLocked(pid))}, nil
+}
+
+func (s *Store) DeleteProject(id int) (DeleteResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.findProjectLocked(id) == nil {
+		return DeleteResult{}, fmt.Errorf("%w: project %d", ErrNotFound, id)
+	}
+	drop := map[int]bool{}
+	for _, issue := range s.issuesForProjectLocked(id) {
+		for _, did := range s.descendantsLocked(issue.ID) {
+			drop[did] = true
+		}
+	}
+	keptIssues := make([]model.Issue, 0, len(s.db.Issues)-len(drop))
+	deleted := make([]int, 0, len(drop))
+	for _, issue := range s.db.Issues {
+		if drop[issue.ID] {
+			deleted = append(deleted, issue.ID)
+			continue
+		}
+		keptIssues = append(keptIssues, issue)
+	}
+	sort.Ints(deleted)
+	for i := range keptIssues {
+		keptIssues[i].BlockedBy = stripIDs(keptIssues[i].BlockedBy, drop)
+		keptIssues[i].LinkedMaps = stripIDs(keptIssues[i].LinkedMaps, drop)
+	}
+	s.db.Issues = keptIssues
+	keptProjects := s.db.Projects[:0]
+	for _, p := range s.db.Projects {
+		if p.ID != id {
+			keptProjects = append(keptProjects, p)
+		}
+	}
+	s.db.Projects = keptProjects
+	if err := s.saveLocked(); err != nil {
+		return DeleteResult{}, err
+	}
+	return DeleteResult{Deleted: deleted}, nil
+}
+
 func (s *Store) ReadyForSpec(mapID int) (model.IssueView, error) {
 	return s.setMapLifecycle(mapID, model.MapLifecycleReadyForSpec)
 }

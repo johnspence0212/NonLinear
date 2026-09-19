@@ -36,3 +36,5 @@ Explicit. Not inferred from “zero open tickets”. Skills (`/to-spec`, `/to-ti
 4. **Create implementation plan** (approved spec only) → draft plan
 5. **Start implementation** / **mark delivered** → plan `active` / `delivered`
 6. Map **route is clear** → map `cleared` (does not invent a spec)
+7. **Move to project** → set `projectId` on an issue and descendants, or on every issue currently on a source Project
+8. **Delete project** → remove the Project and every issue on it

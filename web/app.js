@@ -855,6 +855,13 @@ async function renderProject(id) {
     return;
   }
   const dest = project.destination || "";
+  const others = (state.projects || []).filter((p) => p.id !== project.id);
+  const moveOpts = others
+    .map((p) => `<option value="${p.id}">${esc(p.identifier)} ${esc(p.title)}</option>`)
+    .join("");
+  const move = moveOpts
+    ? `<select data-move-to>${moveOpts}</select><button type="button" data-act="move">move all to…</button>`
+    : "";
   main.innerHTML = `
     ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
     ${box(
@@ -862,6 +869,7 @@ async function renderProject(id) {
       `<div class="box-b pad">
         <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
+        <div class="actions">${move}<button type="button" data-act="delete" class="danger">delete project</button></div>
       </div>`
     )}
     ${box(
@@ -887,6 +895,45 @@ async function renderProject(id) {
       ])
     )
   );
+  const del = main.querySelector("[data-act=delete]");
+  if (del) {
+    del.addEventListener("click", async () => {
+      if (!del.classList.contains("armed")) {
+        del.classList.add("armed");
+        del.textContent = "click again to delete";
+        return;
+      }
+      try {
+        await api("/api/projects/" + project.id, { method: "DELETE" });
+        state.error = "";
+        location.hash = "#/";
+        await paint();
+      } catch (err) {
+        state.error = err.message;
+        await renderProject(project.id);
+      }
+    });
+  }
+  const moveBtn = main.querySelector("[data-act=move]");
+  if (moveBtn) {
+    moveBtn.addEventListener("click", async () => {
+      const sel = main.querySelector("[data-move-to]");
+      const to = Number(sel && sel.value);
+      if (!to) return;
+      try {
+        await api("/api/projects/move", {
+          method: "POST",
+          body: JSON.stringify({ fromProjectId: project.id, projectId: to }),
+        });
+        state.error = "";
+        location.hash = "#/project/" + to;
+        await paint();
+      } catch (err) {
+        state.error = err.message;
+        await renderProject(project.id);
+      }
+    });
+  }
   syncChrome();
 }
 

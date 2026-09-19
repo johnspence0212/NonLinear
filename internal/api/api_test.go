@@ -287,6 +287,40 @@ func TestProjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestMoveAndDeleteProjectHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	m := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Solo loop",
+		"labels": []string{"wayfinder:map"},
+	})
+	srcID := int(m["projectId"].(float64))
+	dest := postJSON(t, mux, "/api/projects", map[string]any{"title": "Idle Frontier"})
+	destID := int(dest["id"].(float64))
+	moved := postJSON(t, mux, "/api/projects/move", map[string]any{
+		"fromProjectId": srcID,
+		"projectId":     destID,
+	})
+	ids, _ := moved["moved"].([]any)
+	if len(ids) != 1 {
+		t.Fatalf("moved: %v", moved)
+	}
+	got := getJSON(t, mux, "/api/projects/"+itoa(destID))
+	maps, _ := got["maps"].([]any)
+	if len(maps) != 1 {
+		t.Fatalf("dest maps: %v", got)
+	}
+	deleted := deleteJSON(t, mux, "/api/projects/"+itoa(srcID))
+	if n, _ := deleted["deleted"].([]any); len(n) != 0 {
+		t.Fatalf("empty delete: %v", deleted)
+	}
+}
+
 func postJSON(t *testing.T, h http.Handler, path string, body any) map[string]any {
 	t.Helper()
 	raw, _ := json.Marshal(body)

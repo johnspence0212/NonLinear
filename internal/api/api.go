@@ -22,7 +22,9 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/labels", h.createLabel)
 	mux.HandleFunc("GET /api/projects", h.listProjects)
 	mux.HandleFunc("POST /api/projects", h.createProject)
+	mux.HandleFunc("POST /api/projects/move", h.moveToProject)
 	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
+	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
 	mux.HandleFunc("GET /api/issues", h.list)
 	mux.HandleFunc("POST /api/issues", h.create)
 	mux.HandleFunc("GET /api/frontier", h.frontier)
@@ -426,6 +428,40 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, project)
+}
+
+func (h *Handler) moveToProject(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		ID            *int `json:"id"`
+		FromProjectID *int `json:"fromProjectId"`
+		ProjectID     int  `json:"projectId"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	result, err := h.Store.MoveToProject(store.MoveToProject{
+		ID:            body.ID,
+		FromProjectID: body.FromProjectID,
+		ProjectID:     body.ProjectID,
+	})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func (h *Handler) deleteProject(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	result, err := h.Store.DeleteProject(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
 }
 
 func (h *Handler) readyForSpec(w http.ResponseWriter, r *http.Request) {

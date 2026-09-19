@@ -275,6 +275,28 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "move_to_project",
+		Description: "Move issues onto another Project. Pass id to move one issue and its descendants (map tickets, plan tickets). Pass fromProjectId to move every issue currently on that Project (maps, specs, plans, and their children). Destination is projectId. Use this when a map wrapped in an implicit Project (P-id = map id) should live under an explicit Project instead.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in moveToProjectInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.MoveToProject(store.MoveToProject{ID: in.ID, FromProjectID: in.FromProjectID, ProjectID: in.ProjectID})
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "delete_project",
+		Description: "Delete a Project and every issue on it (maps, specs, plans, tickets). Remaining issues lose blocked-by edges that pointed at the deleted ids. Empty projects can be deleted. Irreversible.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.DeleteProject(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "ready_for_spec",
 		Description: "Mark a Decision Map ready_for_spec. Explicit lifecycle action; not inferred from closed tickets. Then create_spec.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
@@ -449,6 +471,12 @@ type projectIDInput struct {
 type createProjectInput struct {
 	Title       string `json:"title" jsonschema:"project title"`
 	Destination string `json:"destination,omitempty" jsonschema:"optional destination; otherwise taken from the map body"`
+}
+
+type moveToProjectInput struct {
+	ID            *int `json:"id,omitempty" jsonschema:"issue id to move, including descendants"`
+	FromProjectID *int `json:"fromProjectId,omitempty" jsonschema:"move every issue currently on this project"`
+	ProjectID     int  `json:"projectId" jsonschema:"destination project id"`
 }
 
 type importMapInput struct {

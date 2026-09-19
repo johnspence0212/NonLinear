@@ -393,6 +393,60 @@ func TestMCPProjectLifecycle(t *testing.T) {
 	}
 }
 
+func TestMCPMoveAndDeleteProject(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_issue",
+		Arguments: map[string]any{"title": "Solo loop", "labels": []string{"wayfinder:map"}},
+	})
+	if err != nil || created.IsError {
+		t.Fatalf("map: %v %v", err, created)
+	}
+	srcID := int(toolJSON(t, created)["projectId"].(float64))
+	dest, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Idle Frontier"},
+	})
+	if err != nil || dest.IsError {
+		t.Fatalf("project: %v %v", err, dest)
+	}
+	destID := int(toolJSON(t, dest)["id"].(float64))
+	moved, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "move_to_project",
+		Arguments: map[string]any{"fromProjectId": srcID, "projectId": destID},
+	})
+	if err != nil || moved.IsError {
+		t.Fatalf("move: %v %v", err, moved)
+	}
+	if n, _ := toolJSON(t, moved)["moved"].([]any); len(n) != 1 {
+		t.Fatalf("moved: %v", toolJSON(t, moved))
+	}
+	gone, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "delete_project",
+		Arguments: map[string]any{"id": srcID},
+	})
+	if err != nil || gone.IsError {
+		t.Fatalf("delete: %v %v", err, gone)
+	}
+}
+
 func toolJSON(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(res.StructuredContent)

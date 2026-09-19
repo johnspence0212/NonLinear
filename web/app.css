@@ -32,7 +32,7 @@
 html, body { margin: 0; height: 100%; background: var(--bg); color: var(--fg); font: 13px/1.5 var(--font); }
 a { color: var(--fg); text-decoration: none; }
 a:hover { color: var(--accent); }
-button, input, textarea { font: inherit; color: inherit; background: transparent; border: 0; }
+button, input, textarea, select { font: inherit; color: inherit; background: transparent; border: 0; }
 button { cursor: pointer; }
 ::placeholder { color: var(--muted); }
 :focus { outline: 1px solid var(--line); outline-offset: 1px; }
@@ -366,6 +366,14 @@ h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
 .actions button.danger { color: var(--warn); border-color: #6a3a36; }
 .actions button.danger:hover { color: #fff; background: #6a3a36; }
 .actions button.danger.armed { color: #fff; background: var(--warn); border-color: var(--warn); }
+.actions select {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 4px 8px;
+  background: var(--bg-3);
+  color: var(--fg);
+  max-width: 240px;
+}
 .settings-meta { display: flex; flex-direction: column; gap: 6px; }
 .settings-warn { color: var(--warn); margin: 12px 0 4px; }
 textarea {
