@@ -108,8 +108,11 @@ nav {
   flex-direction: column;
   gap: 1px;
   min-width: 0;
+  overflow: auto;
 }
-nav button {
+nav > button,
+.nav-kids > button,
+.nav-folder-h {
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -121,11 +124,40 @@ nav button {
   white-space: nowrap;
   flex: 0 0 auto;
 }
+.nav-folder-h { justify-content: flex-start; gap: 6px; width: 100%; }
 nav button span { color: var(--muted); }
-nav button:hover { color: var(--fg); background: var(--bg-2); }
-nav button.active { color: var(--accent); background: var(--bg-2); }
-nav button.active span { color: var(--accent); }
+nav > button:hover,
+.nav-kids > button:hover,
+.nav-folder-h:hover {
+  color: var(--fg);
+  background: var(--bg-2);
+}
+nav > button.active,
+.nav-kids > button.active {
+  color: var(--accent);
+  background: var(--bg-2);
+}
+nav > button.active span,
+.nav-kids > button.active span { color: var(--accent); }
 nav [data-go="settings"] { margin-top: auto; }
+
+.nav-folder { display: flex; flex-direction: column; min-width: 0; }
+.nav-chev {
+  flex: 0 0 12px;
+  width: 12px;
+  color: inherit;
+  line-height: 1;
+  font-size: 11px;
+}
+.nav-kids {
+  margin-left: 10px;
+  padding-left: 4px;
+  border-left: 1px solid var(--line);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.nav-kids[hidden] { display: none; }
 
 main {
   min-width: 0;
@@ -528,15 +560,18 @@ footer .foot-brand { margin-left: auto; color: var(--accent); }
   nav {
     flex-direction: row;
     flex-wrap: wrap;
-    align-items: center;
-    align-content: center;
+    align-items: flex-start;
+    align-content: flex-start;
     border-right: 0;
     border-bottom: 1px solid var(--line);
-    overflow: visible;
+    overflow: auto;
+    max-height: 42vh;
     padding: 8px;
     gap: 2px;
   }
-  nav [data-go="settings"] { margin-top: 0; margin-left: auto; }
+  nav > [data-filter="home"] { order: 1; }
+  nav [data-go="settings"] { margin-top: 0; margin-left: auto; order: 2; }
+  .nav-folder { flex: 1 1 100%; order: 3; }
   .brand span, .hdr-btn .lbl { display: none; }
   main { padding: 12px; }
   .stats { grid-template-columns: 1fr 1fr; }

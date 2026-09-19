@@ -14,7 +14,7 @@
     <link rel="manifest" href="/manifest.json" />
     <link rel="icon" href="/icon-192.png" />
     <link rel="apple-touch-icon" href="/icon-192.png" />
-    <link rel="stylesheet" href="/app.css?v=0.3.5" />
+    <link rel="stylesheet" href="/app.css?v=0.3.6" />
   </head>
   <body>
     <div id="app">
@@ -33,12 +33,20 @@
       <div class="shell">
         <nav>
           <button data-filter="home">home</button>
-          <button data-filter="projects">projects <span data-count="projects"></span></button>
-          <button data-filter="maps">maps <span data-count="maps"></span></button>
-          <button data-filter="open">open <span data-count="open"></span></button>
-          <button data-filter="frontier">frontier <span data-count="frontier"></span></button>
-          <button data-filter="closed">closed <span data-count="closed"></span></button>
-          <button data-filter="all">all <span data-count="all"></span></button>
+          <div class="nav-folder" id="nav-issues">
+            <button type="button" class="nav-folder-h" data-nav-toggle="issues" aria-expanded="false">
+              <span class="nav-chev" aria-hidden="true">▸</span>
+              issues
+            </button>
+            <div class="nav-kids" hidden>
+              <button data-filter="projects">projects <span data-count="projects"></span></button>
+              <button data-filter="maps">maps <span data-count="maps"></span></button>
+              <button data-filter="open">open <span data-count="open"></span></button>
+              <button data-filter="frontier">frontier <span data-count="frontier"></span></button>
+              <button data-filter="closed">closed <span data-count="closed"></span></button>
+              <button data-filter="all">all <span data-count="all"></span></button>
+            </div>
+          </div>
           <button data-go="settings">settings</button>
         </nav>
         <main id="main"></main>
@@ -52,7 +60,7 @@
       </footer>
     </div>
     <input type="file" id="import-map-file" accept="application/json,.json,.nlmap.json" hidden />
-    <script src="/md.js?v=0.3.5"></script>
-    <script src="/app.js?v=0.3.5"></script>
+    <script src="/md.js?v=0.3.6"></script>
+    <script src="/app.js?v=0.3.6"></script>
   </body>
 </html>

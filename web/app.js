@@ -715,17 +715,41 @@ function ensurePageBack() {
   if (!existing) main.insertAdjacentHTML("afterbegin", pageBackHTML());
 }
 
+function issuesNavOpen() {
+  try {
+    return localStorage.getItem("nl-nav-issues") === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setIssuesNavOpen(open) {
+  localStorage.setItem("nl-nav-issues", open ? "1" : "0");
+}
+
+function renderNav() {
+  const open = issuesNavOpen();
+  const btn = document.querySelector("[data-nav-toggle=issues]");
+  const chev = btn?.querySelector(".nav-chev");
+  const kids = document.querySelector("#nav-issues .nav-kids");
+  if (btn) {
+    btn.setAttribute("aria-expanded", String(open));
+    btn.setAttribute("aria-label", open ? "collapse issues" : "expand issues");
+  }
+  if (chev) chev.textContent = open ? "▾" : "▸";
+  if (kids) kids.hidden = !open;
+}
+
 function syncChrome() {
   const r = route();
-  document.querySelectorAll("nav button").forEach((b) => {
-    if (b.dataset.go === "settings") {
-      b.classList.toggle("active", r.name === "settings");
-      return;
-    }
+  renderNav();
+  document.querySelectorAll("nav [data-filter]").forEach((b) => {
     const onMap = r.name === "map" && b.dataset.filter === "maps";
     const onProject = r.name === "project" && b.dataset.filter === "projects";
     b.classList.toggle("active", onMap || onProject || (r.name === "list" && b.dataset.filter === state.filter));
   });
+  const settings = document.querySelector("nav > [data-go=settings]");
+  if (settings) settings.classList.toggle("active", r.name === "settings");
   ensurePageBack();
 }
 
@@ -1526,6 +1550,14 @@ function renderSettings() {
 }
 
 document.querySelector("nav").addEventListener("click", (e) => {
+  const tog = e.target.closest("[data-nav-toggle]");
+  if (tog) {
+    e.preventDefault();
+    const open = !issuesNavOpen();
+    setIssuesNavOpen(open);
+    renderNav();
+    return;
+  }
   const settings = e.target.closest("[data-go=settings]");
   if (settings) {
     location.hash = "#/settings";
@@ -1535,6 +1567,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
   if (!b) return;
   state.filter = b.dataset.filter;
   localStorage.setItem("nl-filter", state.filter);
+  if (state.filter !== "home") setIssuesNavOpen(true);
   location.hash = "#/";
   paint();
 });
