@@ -76,7 +76,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_issue",
-		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Start a new map from an existing one with linkedMapId (adds wayfinder:map and a bidirectional link; does not nest or cascade-delete). Wire blocked-by in a second pass with set_blocked_by after ids exist.",
+		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Implementation ticket: set parentId to the plan id so it shows in the plan tickets section (a text reference to the plan is not enough). Start a new map from an existing one with linkedMapId (adds wayfinder:map and a bidirectional link; does not nest or cascade-delete). Wire blocked-by in a second pass with set_blocked_by after ids exist.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Create(store.CreateIssue{
 			Title:       in.Title,
@@ -95,7 +95,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_issue",
-		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map. Use this to append a line to a Wayfinder map body (Decisions so far).",
+		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map or plan (implementation tickets belong to the plan id). Use this to append a line to a Wayfinder map body (Decisions so far).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, any, error) {
 		up := store.UpdateIssue{
 			Title:   optString(in.Title),
@@ -342,7 +342,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_plan",
-		Description: "Create a draft Implementation Plan from an approved Spec. Does not run /to-tickets. Add implementation tickets as children of the plan (parentId).",
+		Description: "Create a draft Implementation Plan from an approved Spec. Does not run /to-tickets. Create each implementation ticket with parentId set to the new plan id so it lands in the plan tickets section.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.CreatePlan(in.ID)
 		if err != nil {
