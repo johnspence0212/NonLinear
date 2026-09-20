@@ -110,6 +110,7 @@ A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementa
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
 | Map ready for spec | `ready_for_spec` |
 | Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
+| Make the spec in one step (ready + draft spec) | `advance_to_spec` |
 | Approve spec | `approve_spec` |
 | Create implementation plan (does not run `/to-tickets`) | `create_plan` |
 | Start / deliver plan | `activate_plan`, `deliver_plan` |
@@ -117,7 +118,7 @@ A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementa
 
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `approve_spec`, `create_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
 `GET /api/health` returns `{ ok, version, data, issues }` so a later client can detect an update. The UI footer and **settings** show the same version. Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
 

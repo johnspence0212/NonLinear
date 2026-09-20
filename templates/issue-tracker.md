@@ -58,6 +58,7 @@ A **Project** (`P-{id}`) parents a Decision Map → Spec → Implementation Plan
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.
 - **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.
 - **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.
+- **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Fill the SPEC body via `/to-spec`, not the map.
 - **Approve spec**: `approve_spec` with the spec `id`.
 - **Create plan**: `create_plan` with an approved spec `id`. Draft plan; implementation tickets are children (`parentId` = plan id). Same `blockedBy` / claim / frontier rules as map tickets.
 - **Activate / deliver**: `activate_plan` then `deliver_plan` with the plan `id`. Explicit complete; not inferred from zero open tickets.

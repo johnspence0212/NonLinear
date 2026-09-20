@@ -305,7 +305,32 @@ func (s *Store) CreateSpec(mapID int) (model.IssueView, error) {
 	if src.Lifecycle != model.MapLifecycleReadyForSpec {
 		return model.IssueView{}, fmt.Errorf("%w: map must be ready_for_spec", ErrInvalid)
 	}
-	if existing, found := s.derivedLocked(model.KindSpec, mapID); found {
+	return s.createSpecLocked(src)
+}
+
+// AdvanceToSpec marks a Decision Map ready_for_spec and creates its draft
+// Spec in one step, so "make the spec" is a single action. It composes
+// ReadyForSpec and CreateSpec: the map may be active or already
+// ready_for_spec, and an existing spec is the same error as CreateSpec.
+func (s *Store) AdvanceToSpec(mapID int) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idx, issue, ok := s.findIndexLocked(mapID)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	if !model.IsMap(issue) {
+		return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map", ErrInvalid, mapID)
+	}
+	issue.Lifecycle = model.MapLifecycleReadyForSpec
+	issue.Kind = model.KindDecisionMap
+	issue.UpdatedAt = time.Now().UTC()
+	s.db.Issues[idx] = issue
+	return s.createSpecLocked(issue)
+}
+
+func (s *Store) createSpecLocked(src model.Issue) (model.IssueView, error) {
+	if existing, found := s.derivedLocked(model.KindSpec, src.ID); found {
 		return model.IssueView{}, fmt.Errorf("%w: spec already exists (%s)", ErrInvalid, existing.Identifier)
 	}
 	dest := model.ExtractDestination(src.Body)
