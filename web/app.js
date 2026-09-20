@@ -860,12 +860,23 @@ function artifactRowHTML(issue) {
   const src = issue.derivedFrom
     ? `from <a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>`
     : "";
+  let detail = "";
+  let progress = "";
+  if (isPlan(issue)) {
+    const kids = (issue.children || []).filter((c) => !isArtifact(c));
+    const total = kids.length;
+    const done = kids.filter((c) => c.state === "closed").length;
+    const pct = total ? Math.round((done / total) * 100) : 0;
+    detail = `${total - done} open · ${done} done`;
+    progress = `<div class="progress"><i style="width:${pct}%"></i></div>`;
+  }
+  const meta = [src, detail].filter(Boolean).join(" · ");
   return `<div class="row">
     <a class="id" href="${hrefFor(issue)}">${issue.identifier}</a>
     <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
-    <span class="meta">${src}</span>
+    <span class="meta">${meta}</span>
     <span class="mark">${statusStamp(issue)}</span>
-  </div>`;
+  </div>${progress}`;
 }
 
 async function renderProject(id) {
