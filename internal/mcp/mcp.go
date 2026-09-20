@@ -298,7 +298,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "ready_for_spec",
-		Description: "Mark a Decision Map ready_for_spec. Explicit lifecycle action; not inferred from closed tickets. Then create_spec.",
+		Description: "Mark a Decision Map ready_for_spec. Explicit lifecycle action; not inferred from closed tickets. Prefer advance_to_spec to mark ready and create the draft in one step.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.ReadyForSpec(in.ID)
 		if err != nil {
@@ -320,9 +320,20 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_spec",
-		Description: "Create a draft Spec from a map that is ready_for_spec. Body is an empty to-spec skeleton (destination copied from the map). Does not run the /to-spec skill.",
+		Description: "Create a draft Spec from a map that is already ready_for_spec. Otherwise prefer advance_to_spec. Body is an empty to-spec skeleton (destination copied from the map). Does not run the /to-spec skill.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.CreateSpec(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(issue)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "advance_to_spec",
+		Description: "Mark a Decision Map ready and create its draft Spec in one step. Use this for 'make the spec' when wayfinding is done. Returns the draft spec (empty to-spec skeleton, destination copied from the map); fill the SPEC body via the /to-spec skill, not the map. Does not run the /to-spec skill.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
+		issue, err := st.AdvanceToSpec(in.ID)
 		if err != nil {
 			return errResult(err)
 		}

@@ -40,6 +40,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/issues/{id}/ready-for-spec", h.readyForSpec)
 	mux.HandleFunc("POST /api/issues/{id}/clear-route", h.clearRoute)
 	mux.HandleFunc("POST /api/issues/{id}/create-spec", h.createSpec)
+	mux.HandleFunc("POST /api/issues/{id}/advance-to-spec", h.advanceToSpec)
 	mux.HandleFunc("POST /api/issues/{id}/approve", h.approveSpec)
 	mux.HandleFunc("POST /api/issues/{id}/create-plan", h.createPlan)
 	mux.HandleFunc("POST /api/issues/{id}/activate-plan", h.activatePlan)
@@ -474,6 +475,10 @@ func (h *Handler) clearRoute(w http.ResponseWriter, r *http.Request) {
 
 func (h *Handler) createSpec(w http.ResponseWriter, r *http.Request) {
 	h.issueActionCreated(w, r, h.Store.CreateSpec)
+}
+
+func (h *Handler) advanceToSpec(w http.ResponseWriter, r *http.Request) {
+	h.issueActionCreated(w, r, h.Store.AdvanceToSpec)
 }
 
 func (h *Handler) approveSpec(w http.ResponseWriter, r *http.Request) {

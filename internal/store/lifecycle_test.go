@@ -298,6 +298,51 @@ func mustPlan(t *testing.T, s *Store) model.IssueView {
 	return plan
 }
 
+func TestAdvanceToSpec(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip it.\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := s.AdvanceToSpec(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Kind != model.KindSpec || spec.Lifecycle != model.SpecLifecycleDraft {
+		t.Fatalf("spec: %+v", spec)
+	}
+	if spec.DerivedFromArtifactID == nil || *spec.DerivedFromArtifactID != m.ID {
+		t.Fatalf("spec derivedFrom: %+v", spec.DerivedFromArtifactID)
+	}
+	got, err := s.Get(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Lifecycle != model.MapLifecycleReadyForSpec {
+		t.Fatalf("map lifecycle %s, want ready_for_spec", got.Lifecycle)
+	}
+	if _, err := s.AdvanceToSpec(m.ID); err == nil {
+		t.Fatal("advance twice should report the existing spec")
+	}
+	ready, err := s.Create(CreateIssue{Title: "Ready map", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ReadyForSpec(ready.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AdvanceToSpec(ready.ID); err != nil {
+		t.Fatalf("advance on an already-ready map: %v", err)
+	}
+	ticket, err := s.Create(CreateIssue{Title: "Ticket", ParentID: &m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AdvanceToSpec(ticket.ID); err == nil {
+		t.Fatal("advance on a non-map")
+	}
+}
+
 func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
 	s := testStore(t)
 	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}})

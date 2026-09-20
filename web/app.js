@@ -788,8 +788,7 @@ async function renderMap(id) {
   const hasSpec = specs.length > 0;
   const life = map.lifecycle || "active";
   const actions = [
-    life !== "ready_for_spec" && life !== "cleared" ? `<button data-act="ready-for-spec">ready for spec</button>` : "",
-    life === "ready_for_spec" && !hasSpec ? `<button data-act="create-spec">create spec</button>` : "",
+    !hasSpec && life !== "cleared" ? `<button data-act="advance-spec">make spec</button>` : "",
     life !== "cleared" ? `<button data-act="clear-route">route is clear</button>` : "",
     `<button data-act="edit">edit map</button>`,
     `<button data-act="export">export</button>`,
@@ -902,7 +901,7 @@ async function renderProject(id) {
     )}
     ${box(
       "<strong>spec</strong>",
-      (project.specs || []).map(artifactRowHTML).join("") || `<div class="empty">none — mark the map ready for spec</div>`
+      (project.specs || []).map(artifactRowHTML).join("") || `<div class="empty">none — make the spec from the map</div>`
     )}
     ${box(
       "<strong>implementation plan</strong>",
@@ -1356,17 +1355,14 @@ async function act(issue, kind) {
       await downloadMap(issue);
       return;
     }
-    if (kind === "ready-for-spec") {
-      await api(`/api/issues/${issue.id}/ready-for-spec`, { method: "POST", body: "{}" });
-    }
-    if (kind === "clear-route") {
-      await api(`/api/issues/${issue.id}/clear-route`, { method: "POST", body: "{}" });
-    }
-    if (kind === "create-spec") {
-      const spec = await api(`/api/issues/${issue.id}/create-spec`, { method: "POST", body: "{}" });
+    if (kind === "advance-spec") {
+      const spec = await api(`/api/issues/${issue.id}/advance-to-spec`, { method: "POST", body: "{}" });
       location.hash = hrefFor(spec);
       await paint();
       return;
+    }
+    if (kind === "clear-route") {
+      await api(`/api/issues/${issue.id}/clear-route`, { method: "POST", body: "{}" });
     }
     if (kind === "approve") {
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
