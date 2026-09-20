@@ -1040,6 +1040,10 @@ async function renderPlan(id) {
   state.issues = flattenGroups([{ parent: null, tickets: state.issues }], split);
   if (state.selected >= state.issues.length) state.selected = 0;
   const kids = (issue.children || []).filter((c) => !isArtifact(c));
+  const total = kids.length;
+  const done = kids.filter((c) => c.state === "closed").length;
+  const open = total - done;
+  const pct = total ? Math.round((done / total) * 100) : 0;
   const life = issue.lifecycle || "draft";
   const actions = [
     life === "draft" ? `<button data-act="activate-plan">start implementation</button>` : "",
@@ -1062,8 +1066,9 @@ async function renderPlan(id) {
     )}
     ${relationBox("blocked by", sortRelations(issue.blockers), "not blocked")}
     ${box(
-      `<strong>tickets</strong><div class="subnav">${filters}</div>`,
-      rows || `<div class="empty">no tickets on this plan</div>`,
+      `<strong>tickets</strong><span class="mark">${open} open · ${done} done</span><div class="subnav">${filters}</div>`,
+      `<div class="progress"><i style="width:${pct}%"></i></div>` +
+        (rows || `<div class="empty">no tickets on this plan</div>`),
       composeBar("new ticket on this plan")
     )}`;
   bindCompose({ parentId: issue.id });
