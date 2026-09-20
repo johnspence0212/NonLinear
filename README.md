@@ -112,7 +112,7 @@ A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementa
 | Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
 | Make the spec in one step (ready + draft spec) | `advance_to_spec` |
 | Approve spec | `approve_spec` |
-| Create implementation plan (does not run `/to-tickets`) | `create_plan` |
+| Create implementation plan (does not run `/to-tickets`; parent each ticket to the plan id) | `create_plan` |
 | Start / deliver plan | `activate_plan`, `deliver_plan` |
 | Route is clear | `clear_route` |
 

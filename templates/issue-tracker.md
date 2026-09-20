@@ -27,7 +27,7 @@ The UI is `http://localhost:3333`. Issue identity is the numeric `id`. Display n
 
 ## When a skill says "publish to the issue tracker"
 
-Call `create_issue`.
+Call `create_issue`. Parent the ticket structurally: implementation tickets get `parentId` set to the plan's id, Wayfinder tickets to the map's id. A `## Parent` text reference alone does not place the ticket.
 
 ## When a skill says "fetch the relevant ticket"
 
