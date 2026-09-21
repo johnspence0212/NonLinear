@@ -269,6 +269,29 @@ aside {
   color: var(--muted);
 }
 .body hr, .comment .text hr { border: 0; border-top: 1px solid var(--line); margin: 12px 0; }
+.md-table {
+  overflow-x: auto;
+  max-width: 100%;
+  margin: 8px 0;
+}
+.body table {
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+}
+.body th,
+.body td {
+  border: 1px solid var(--line);
+  padding: 5px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.body thead th {
+  font-weight: 600;
+  background: var(--bg);
+  color: var(--fg);
+  white-space: nowrap;
+}
 .map-body { color: var(--muted); max-height: 180px; overflow: auto; }
 
 .row {
