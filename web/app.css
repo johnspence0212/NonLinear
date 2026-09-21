@@ -407,7 +407,14 @@ aside {
   padding: 8px 10px;
   color: var(--fg);
 }
-.edit-label input:focus { outline: none; border-color: var(--accent); }
+.edit-label select {
+  background: var(--bg-3);
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  color: var(--fg);
+}
+.edit-label input:focus, .edit-label select:focus { outline: none; border-color: var(--accent); }
 .edit-label textarea { min-height: 220px; }
 h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
@@ -433,6 +440,7 @@ h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
 }
 .settings-meta { display: flex; flex-direction: column; gap: 6px; }
 .settings-warn { color: var(--warn); margin: 12px 0 4px; }
+.notice { color: var(--accent); margin: 0 0 10px; }
 textarea {
   width: 100%;
   min-height: 120px;

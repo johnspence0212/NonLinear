@@ -6,9 +6,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 
+	"github.com/johnspence0212/NonLinear/internal/cursor"
 	"github.com/johnspence0212/NonLinear/internal/store"
 	"github.com/johnspence0212/NonLinear/internal/version"
 )
@@ -399,6 +402,67 @@ func TestMoveAndDeleteProjectHTTP(t *testing.T) {
 	deleted := deleteJSON(t, mux, "/api/projects/"+itoa(srcID))
 	if n, _ := deleted["deleted"].([]any); len(n) != 0 {
 		t.Fatalf("empty delete: %v", deleted)
+	}
+}
+
+func TestCursorRunHTTP(t *testing.T) {
+	dir := t.TempDir()
+	st, err := store.Open(filepath.Join(dir, "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	svc := cursor.New(dir)
+	ws := t.TempDir()
+	if _, err := svc.Save(cursor.Settings{Model: "composer-2", Workspace: ws}); err != nil {
+		t.Fatal(err)
+	}
+	svc.LookPath = func(name string) (string, error) {
+		if name == "agent" {
+			return "/bin/agent", nil
+		}
+		return "", os.ErrNotExist
+	}
+	svc.Command = func(name string, args ...string) *exec.Cmd {
+		return exec.Command("true")
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st, Cursor: svc}).Register(mux)
+
+	parent := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Map",
+		"labels": []string{"wayfinder:map"},
+	})
+	openTicket := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "Unblocked",
+		"parentId": parent["id"],
+	})
+	blocked := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "Waiting",
+		"parentId": parent["id"],
+	})
+	putJSON(t, mux, "/api/issues/"+itoa(blocked["id"])+"/blocked-by", map[string]any{
+		"issueIds": []any{openTicket["id"]},
+	})
+
+	sent := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "issue", "id": openTicket["id"]})
+	if sent["mode"] != "print" || sent["model"] != "composer-2" {
+		t.Fatalf("sent: %v", sent)
+	}
+	reqRaw, _ := json.Marshal(map[string]any{"action": "issue", "id": blocked["id"]})
+	req := httptest.NewRequest(http.MethodPost, "/api/cursor/run", bytes.NewReader(reqRaw))
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("blocked send: %d %s", rec.Code, rec.Body.String())
+	}
+
+	specd := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "to-spec", "id": parent["id"]})
+	if specd["prompt"] != "/to-spec #"+parent["identifier"].(string) {
+		t.Fatalf("to-spec: %v", specd)
+	}
+	planned := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "to-plan", "id": parent["id"]})
+	if planned["prompt"] != "/to-tickets #"+parent["identifier"].(string) {
+		t.Fatalf("to-plan: %v", planned)
 	}
 }
 

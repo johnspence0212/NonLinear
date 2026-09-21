@@ -5,6 +5,7 @@ const state = {
   projects: [],
   selected: 0,
   error: "",
+  notice: "",
   stats: { all: 0, open: 0, closed: 0, maps: 0, projects: 0, frontier: 0, blocked: 0 },
   labels: [],
   version: "",
@@ -169,6 +170,22 @@ function relationBox(title, items, empty) {
     `<strong>${title}</strong><span>${relCounts(list)}</span>`,
     list.map((i) => rowHTML(i, false, false)).join("") || `<div class="empty">${empty}</div>`
   );
+}
+
+function flash() {
+  const err = state.error ? `<div class="error">${esc(state.error)}</div>` : "";
+  const note = state.notice ? `<div class="notice">${esc(state.notice)}</div>` : "";
+  state.notice = "";
+  return err + note;
+}
+
+async function sendCursor(action, id) {
+  const res = await api("/api/cursor/run", {
+    method: "POST",
+    body: JSON.stringify({ action, id }),
+  });
+  const model = res.model ? ` · ${res.model}` : "";
+  state.notice = res.mode === "terminal" ? `opened cursor${model}` : `sent to cursor${model}`;
 }
 
 function esc(s) {
@@ -783,6 +800,8 @@ async function renderMap(id) {
   const life = map.lifecycle || "active";
   const actions = [
     !hasSpec && life !== "cleared" ? `<button data-act="advance-spec">make spec</button>` : "",
+    `<button data-act="to-spec">to spec</button>`,
+    `<button data-act="to-plan">to plan</button>`,
     life !== "cleared" ? `<button data-act="clear-route">route is clear</button>` : "",
     `<button data-act="edit">edit map</button>`,
     `<button data-act="export">export</button>`,
@@ -791,7 +810,7 @@ async function renderMap(id) {
     .filter(Boolean)
     .join("");
   main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${flash()}
     ${projectCrumb(map)}
     ${box(
       `<strong>${esc(map.identifier)}</strong>${stamp(life, map.state === "closed" ? "closed lg" : "open lg")}`,
@@ -994,7 +1013,7 @@ async function renderSpec(id) {
     .filter(Boolean)
     .join("");
   main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${flash()}
     ${projectCrumb(issue)}
     ${box(
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
@@ -1222,7 +1241,7 @@ async function renderIssue(id) {
   const blockers = sortRelations(issue.blockers);
   const blocks = sortRelations(issue.blocks);
   main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${flash()}
     ${box(
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
       `<div class="box-b pad ${closed ? "is-closed" : ""}" id="issue-head">
@@ -1230,6 +1249,7 @@ async function renderIssue(id) {
         <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no labels</span>`}</div>
         <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty body</span>`}</div>
         <div class="actions">
+          ${issue.state === "open" && !issue.blocked ? `<button data-act="send-cursor">send to cursor</button>` : ""}
           ${issue.state === "open" && !issue.assignee ? `<button data-act="claim">claim</button>` : ""}
           ${issue.assignee && issue.state === "open" ? `<button data-act="unclaim">unclaim</button>` : ""}
           ${issue.state === "open" ? `<button data-act="close">close</button>` : `<button data-act="reopen">reopen</button>`}
@@ -1385,6 +1405,19 @@ async function act(issue, kind) {
     }
     if (kind === "approve") {
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
+      try {
+        await sendCursor("to-tickets", issue.id);
+      } catch (err) {
+        state.error = "approved. " + err.message;
+      }
+      await paint();
+      return;
+    }
+    if (kind === "to-spec" || kind === "to-plan" || kind === "send-cursor") {
+      const action = kind === "send-cursor" ? "issue" : kind;
+      await sendCursor(action, issue.id);
+      await paint();
+      return;
     }
     if (kind === "create-plan") {
       const plan = await api(`/api/issues/${issue.id}/create-plan`, { method: "POST", body: "{}" });
@@ -1461,7 +1494,7 @@ async function paint() {
       return;
     }
     if (r.name === "settings") {
-      renderSettings();
+      await renderSettings();
       renderRail();
       return;
     }
@@ -1524,9 +1557,25 @@ async function renderSearch(query) {
   syncChrome();
 }
 
-function renderSettings() {
+async function renderSettings() {
   const s = state.stats;
-  main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
+  let cursor = { model: "", workspace: "", models: [], cli: false, cliError: "" };
+  try {
+    cursor = await api("/api/cursor");
+  } catch (err) {
+    state.error = err.message;
+  }
+  const models = cursor.models || [];
+  const known = models.includes(cursor.model);
+  const modelField = models.length
+    ? `<select id="cursor-model">
+        <option value="">cli default</option>
+        ${cursor.model && !known ? `<option value="${esc(cursor.model)}" selected>${esc(cursor.model)}</option>` : ""}
+        ${models.map((m) => `<option value="${esc(m)}" ${m === cursor.model ? "selected" : ""}>${esc(m)}</option>`).join("")}
+      </select>`
+    : `<input id="cursor-model" value="${esc(cursor.model || "").replaceAll('"', "&quot;")}" placeholder="model id" autocomplete="off" />`;
+  const cli = cursor.cli ? "found" : esc(cursor.cliError || "not found");
+  main.innerHTML = `${flash()}${box(
     "<strong>settings</strong>",
     `<div class="box-b pad">
       <div class="settings-meta">
@@ -1536,7 +1585,13 @@ function renderSettings() {
         <div class="rail-line">tickets <b>${s.all}</b></div>
         <div class="rail-line">maps <b>${s.maps}</b></div>
         <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
+        <div class="rail-line">cursor cli <b>${cli}</b></div>
       </div>
+      <form id="cursor-settings" class="pad">
+        <label class="edit-label">default model${modelField}</label>
+        <label class="edit-label">workspace<input id="cursor-workspace" value="${esc(cursor.workspace || "").replaceAll('"', "&quot;")}" placeholder="/path/to/repo" autocomplete="off" /></label>
+        <div class="actions"><button type="submit">save cursor</button></div>
+      </form>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
       <div class="actions">
         <button type="button" data-import-map>import map</button>
@@ -1544,6 +1599,27 @@ function renderSettings() {
       </div>
     </div>`
   )}`;
+  const form = $("#cursor-settings");
+  if (form) {
+    form.addEventListener("submit", async (e) => {
+      e.preventDefault();
+      try {
+        await api("/api/cursor", {
+          method: "PUT",
+          body: JSON.stringify({
+            model: form.querySelector("#cursor-model")?.value || "",
+            workspace: form.querySelector("#cursor-workspace")?.value || "",
+          }),
+        });
+        state.error = "";
+        state.notice = "saved cursor settings";
+        await renderSettings();
+      } catch (err) {
+        state.error = err.message;
+        await renderSettings();
+      }
+    });
+  }
   const btn = $("#wipe");
   btn.addEventListener("click", async () => {
     if (!btn.classList.contains("armed")) {

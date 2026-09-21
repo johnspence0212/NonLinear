@@ -4,16 +4,19 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"path/filepath"
 	"strconv"
 	"strings"
 
+	"github.com/johnspence0212/NonLinear/internal/cursor"
 	"github.com/johnspence0212/NonLinear/internal/model"
 	"github.com/johnspence0212/NonLinear/internal/store"
 	"github.com/johnspence0212/NonLinear/internal/version"
 )
 
 type Handler struct {
-	Store *store.Store
+	Store  *store.Store
+	Cursor *cursor.Service
 }
 
 func (h *Handler) Register(mux *http.ServeMux) {
@@ -49,6 +52,62 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/issues/{id}/export", h.exportMap)
 	mux.HandleFunc("POST /api/import", h.importMap)
 	mux.HandleFunc("POST /api/wipe", h.wipe)
+	mux.HandleFunc("GET /api/cursor", h.cursorStatus)
+	mux.HandleFunc("PUT /api/cursor", h.cursorSave)
+	mux.HandleFunc("POST /api/cursor/run", h.cursorRun)
+}
+
+func (h *Handler) cursorSvc() *cursor.Service {
+	if h.Cursor == nil && h.Store != nil {
+		h.Cursor = cursor.New(filepath.Dir(h.Store.Path()))
+	}
+	return h.Cursor
+}
+
+func (h *Handler) cursorStatus(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.cursorSvc().Status(r.Context()))
+}
+
+func (h *Handler) cursorSave(w http.ResponseWriter, r *http.Request) {
+	var body cursor.Settings
+	if !decode(w, r, &body) {
+		return
+	}
+	cfg, err := h.cursorSvc().Save(body)
+	if err != nil {
+		writeCursorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (h *Handler) cursorRun(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Action string `json:"action"`
+		ID     int    `json:"id"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	issue, err := h.Store.Get(body.ID)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	result, err := h.cursorSvc().Run(r.Context(), body.Action, issue)
+	if err != nil {
+		writeCursorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
+func writeCursorError(w http.ResponseWriter, err error) {
+	if errors.Is(err, cursor.ErrInvalid) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	writeError(w, http.StatusInternalServerError, err.Error())
 }
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {

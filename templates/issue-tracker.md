@@ -51,7 +51,7 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. Skill runs (`/to-spec`, `/to-tickets`) are a handoff; do not expect NonLinear to fill the document.
+A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. The UI can launch `/to-spec` and `/to-tickets` through the Cursor CLI. MCP lifecycle calls still do not fill the document.
 
 - **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Creating a map does not create a Project.
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
