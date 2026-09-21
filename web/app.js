@@ -419,27 +419,22 @@ function groupedTicketHTML(groups, split = false) {
     .join("");
 }
 
-function stageLabel(stage) {
-  return String(stage || "").replace(/_/g, " ");
-}
-
 function projectHref(project) {
   return `#/project/${project.id}`;
 }
 
-function projectRowHTML(project, selected = false, nav = false) {
+function projectCounts(project) {
   const maps = (project.maps || []).length;
   const specs = (project.specs || []).length;
   const plans = (project.plans || []).length;
-  const dest = String(project.destination || "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 72);
-  return `<div class="row map-row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${project.id}">
+  return `${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} plan${plans === 1 ? "" : "s"}`;
+}
+
+function projectRowHTML(project, selected = false, nav = false) {
+  return `<div class="row project-row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${project.id}">
     <span class="map-mark">${esc(project.identifier || "P")}</span>
     <a class="title" href="${projectHref(project)}">${esc(project.title)}</a>
-    <span class="meta">${esc(stageLabel(project.stage))}${dest ? " · " + esc(dest) : ""}</span>
-    <span class="mark">${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} plan${plans === 1 ? "" : "s"}</span>
+    <span class="mark">${projectCounts(project)}</span>
   </div>`;
 }
 
