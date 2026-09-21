@@ -276,8 +276,6 @@ aside {
 }
 .body table {
   border-collapse: collapse;
-  width: max-content;
-  min-width: 100%;
 }
 .body th,
 .body td {
