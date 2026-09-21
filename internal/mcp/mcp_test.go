@@ -385,6 +385,71 @@ func TestMCPLinkedMaps(t *testing.T) {
 	}
 }
 
+func TestMCPCreateMapOnProject(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	proj, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Idle Frontier"},
+	})
+	if err != nil || proj.IsError {
+		t.Fatalf("project: %v %v", err, proj)
+	}
+	pid := int(toolJSON(t, proj)["id"].(float64))
+	first, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":     "First session",
+			"labels":    []string{"wayfinder:map"},
+			"projectId": pid,
+		},
+	})
+	if err != nil || first.IsError {
+		t.Fatalf("first: %v %v", err, first)
+	}
+	second, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":     "Second session",
+			"labels":    []string{"wayfinder:map"},
+			"projectId": pid,
+		},
+	})
+	if err != nil || second.IsError {
+		t.Fatalf("second: %v %v", err, second)
+	}
+	if int(toolJSON(t, first)["projectId"].(float64)) != pid || int(toolJSON(t, second)["projectId"].(float64)) != pid {
+		t.Fatalf("projectId first=%v second=%v", toolJSON(t, first), toolJSON(t, second))
+	}
+	got, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_project",
+		Arguments: map[string]any{"id": pid},
+	})
+	if err != nil || got.IsError {
+		t.Fatalf("get: %v %v", err, got)
+	}
+	maps, _ := toolJSON(t, got)["maps"].([]any)
+	if len(maps) != 2 {
+		t.Fatalf("maps: %v", toolJSON(t, got))
+	}
+}
+
 func TestMCPProjectLifecycle(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

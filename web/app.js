@@ -778,7 +778,6 @@ async function renderMap(id) {
       ? "nothing on the frontier — blocked and claimed tickets are under open"
       : "no tickets on this map";
   const kids = (map.children || []).filter((c) => !isArtifact(c));
-  const linked = map.linked || [];
   const specs = project ? project.specs || [] : [];
   const hasSpec = specs.length > 0;
   const life = map.lifecycle || "active";
@@ -811,17 +810,11 @@ async function renderMap(id) {
         : ""
     }
     ${box(
-      `<strong>linked maps</strong><span>${linked.length ? linked.length : ""}</span>`,
-      linked.map((m) => rowHTML(m, false, false)).join("") || `<div class="empty">none — start another session from this map</div>`,
-      composeBar("new linked map", "compose-link")
-    )}
-    ${box(
       `<strong>tickets</strong><div class="subnav">${filters}</div>`,
       rows || `<div class="empty">${empty}</div>`,
       composeBar("new ticket on this map")
     )}`;
   bindCompose({ parentId: map.id });
-  bindCompose({ linkedMapId: map.id }, "compose-link");
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(map, btn.dataset.act)));
   main.querySelectorAll("[data-map-filter]").forEach((b) => {
     b.addEventListener("click", () => {
@@ -838,7 +831,6 @@ async function renderMap(id) {
         ["open", kids.filter((c) => c.state === "open").length],
         ["frontier", kids.filter((c) => c.frontier).length],
         ["blocked", kids.filter((c) => c.blocked).length],
-        ["linked", linked.length],
       ])
     )
   );
@@ -902,8 +894,9 @@ async function renderProject(id) {
       </div>`
     )}
     ${box(
-      "<strong>decision map</strong>",
-      (project.maps || []).map((m) => mapRowHTML(m)).join("") || `<div class="empty">no map</div>`
+      "<strong>decision maps</strong>",
+      (project.maps || []).map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
+      composeBar("new map on this project")
     )}
     ${box(
       "<strong>spec</strong>",
@@ -963,6 +956,7 @@ async function renderProject(id) {
       }
     });
   }
+  bindCompose({ labels: ["wayfinder:map"], projectId: project.id });
   syncChrome();
 }
 

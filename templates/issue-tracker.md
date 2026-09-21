@@ -39,7 +39,7 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 - **Map**: `create_issue` with `labels: ["wayfinder:map"]`. Body holds Destination / Notes / Decisions so far / Not yet specified / Out of scope.
 - **Child ticket**: `create_issue` with `parentId` set to the map's `id`, `labels: ["wayfinder:<type>"]` where type is `research`, `prototype`, `grilling`, or `task`. Create tickets first, then wire blocking (issues need ids before they can reference each other).
-- **Linked map**: start a new Wayfinder map from an existing one with `create_issue` `{ title, linkedMapId }`. Adds `wayfinder:map` and a bidirectional `linked` edge. Both maps stay top-level; deleting one unlinks the other and does **not** delete it. Replace the set with `set_linked_maps` (`id` + `mapIds`). Export of a single map drops links that pointed at maps outside the bundle.
+- **Another map on the same Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId` set to the Project id. Sibling maps live on the Project; the map UI does not show linked-map edges. `linkedMapId` still creates a map, records an optional bidirectional edge, and attaches it to the source map's Project — prefer `projectId`. `set_linked_maps` (`id` + `mapIds`) only maintains those optional edges (pass `mapIds: []` to unlink). Linking does not nest, group, or cascade-delete. Export of a single map drops edges that pointed at maps outside the bundle.
 - **Blocking**: `set_blocked_by` with the child `id` and `issueIds` of the issues that block it. Canonical, UI-visible. A ticket is unblocked when every blocker is `closed`.
 - **Frontier query**: `list_frontier` with `parentId` equal to the map's `id`. Returns `{next, issues}` — open, unblocked, unassigned children, maps excluded, ordered by id. Use `next`. Do not pick from `get_issue` children (those include closed tickets). Equivalent: `list_issues` with `parentId`, `state: "open"`, `frontier: true`.
 - **Claim**: `claim_issue` with the ticket `id` (optional `assignee`, default `cursor`). The session's first write. An open unassigned ticket is unclaimed.
@@ -51,9 +51,10 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) parents a Decision Map → Spec → Implementation Plan. Stage is derived (never stored). Tags are classification only. Skill runs (`/to-spec`, `/to-tickets`) are a handoff; do not expect NonLinear to fill the document.
+A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. Skill runs (`/to-spec`, `/to-tickets`) are a handoff; do not expect NonLinear to fill the document.
 
 - **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Standalone maps wrap in an implicit Project whose id equals the map id.
+- **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
 - **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this when a map landed on an implicit Project (`P-19` for map `NL-19`) and should live under an explicit one.
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.
 - **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.

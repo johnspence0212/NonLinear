@@ -4,9 +4,11 @@ Local JSON issue tracker. Agents are the primary user.
 
 ## Glossary
 
-**Project** — parent entity (`P-{id}`). Owns a Decision Map, Spec, and Implementation Plan. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
+**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, and Implementation Plan. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
 
-**Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`).
+**Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`). A Project can have several maps.
+
+**Linked maps** — optional bidirectional edges (`linkedMaps`). They do not nest, group, or cascade. The map UI does not show them. Related maps share a `projectId`.
 
 **Spec** — an issue with `kind=spec`, derived from a map (`derivedFromArtifactId`). Lifecycle: `draft` → `approved` (or `superseded`). Open at `#/spec/{id}`.
 

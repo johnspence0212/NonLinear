@@ -343,6 +343,41 @@ func TestAdvanceToSpec(t *testing.T) {
 	}
 }
 
+func TestCreateMapOnExistingProject(t *testing.T) {
+	s := testStore(t)
+	p, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	pid := p.ID
+	first, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}, ProjectID: &pid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Create(CreateIssue{Title: "Second session", Labels: []string{"wayfinder:map"}, ProjectID: &pid})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if first.ProjectID == nil || *first.ProjectID != pid {
+		t.Fatalf("first projectId %v want %d", first.ProjectID, pid)
+	}
+	if second.ProjectID == nil || *second.ProjectID != pid {
+		t.Fatalf("second projectId %v want %d", second.ProjectID, pid)
+	}
+	got, err := s.GetProject(pid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Maps) != 2 {
+		t.Fatalf("maps: %+v", ids(got.Maps))
+	}
+	if _, err := s.Create(CreateIssue{Title: "Missing project", Labels: []string{"wayfinder:map"}, ProjectID: intPtr(999)}); err == nil {
+		t.Fatal("expected missing project")
+	}
+}
+
+func intPtr(n int) *int { return &n }
+
 func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
 	s := testStore(t)
 	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}})
@@ -460,4 +495,3 @@ func TestDeleteEmptyProject(t *testing.T) {
 		t.Fatal("expected project gone")
 	}
 }
-

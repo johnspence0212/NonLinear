@@ -337,6 +337,16 @@ func TestLinkedMapsAreSymmetricAndDoNotCascade(t *testing.T) {
 	if !model.IsMap(b.Issue) {
 		t.Fatal("linkedMapId should make a map")
 	}
+	if a.ProjectID == nil || b.ProjectID == nil || *a.ProjectID != *b.ProjectID {
+		t.Fatalf("linkedMapId should join the source project: a=%v b=%v", a.ProjectID, b.ProjectID)
+	}
+	proj, err := s.GetProject(*a.ProjectID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proj.Maps) != 2 {
+		t.Fatalf("project maps: %+v", ids(proj.Maps))
+	}
 	if len(b.Linked) != 1 || b.Linked[0].ID != a.ID {
 		t.Fatalf("new map should link back: %+v", b.Linked)
 	}

@@ -65,7 +65,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_issue",
-		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), linked maps, and frontier/blocked flags. Use this to zoom into a Wayfinder ticket.",
+		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), optional linked map edges, projectRef, and frontier/blocked flags. Sibling maps live on the Project, not via linked edges. Use this to zoom into a Wayfinder ticket.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Get(in.ID)
 		if err != nil {
@@ -76,7 +76,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_issue",
-		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Implementation ticket: set parentId to the plan id so it shows in the plan tickets section (a text reference to the plan is not enough). Start a new map from an existing one with linkedMapId (adds wayfinder:map and a bidirectional link; does not nest or cascade-delete). Wire blocked-by in a second pass with set_blocked_by after ids exist.",
+		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Put a map on an existing Project with projectId. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Implementation ticket: set parentId to the plan id so it shows in the plan tickets section (a text reference to the plan is not enough). linkedMapId still creates a map and an optional bidirectional edge, and attaches it to the source map's Project — prefer projectId. Wire blocked-by in a second pass with set_blocked_by after ids exist.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Create(store.CreateIssue{
 			Title:       in.Title,
@@ -85,6 +85,7 @@ func New(st *store.Store) *mcp.Server {
 			ParentID:    in.ParentID,
 			LinkedMapID: in.LinkedMapID,
 			Project:     in.Project,
+			ProjectID:   in.ProjectID,
 			Assignee:    optString(in.Assignee),
 		})
 		if err != nil {
@@ -160,7 +161,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_linked_maps",
-		Description: "Replace bidirectional links from this Wayfinder map to other maps. Both sides must be maps. Linking does not nest tickets or cascade delete. Pass mapIds=[] to unlink. To start a new map from this one, prefer create_issue with linkedMapId.",
+		Description: "Replace optional bidirectional linked-map edges. Both sides must be maps. Linking does not nest, group, or cascade delete — sibling maps belong to a Project. The map UI does not show these edges. Pass mapIds=[] to unlink. To add another map to a Project, prefer create_issue with projectId.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in linkedMapsInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.SetLinkedMaps(in.ID, in.MapIDs)
 		if err != nil {
@@ -406,8 +407,9 @@ type createInput struct {
 	Body        string   `json:"body,omitempty" jsonschema:"markdown body"`
 	Labels      []string `json:"labels,omitempty"`
 	ParentID    *int     `json:"parentId,omitempty" jsonschema:"parent map id for child tickets"`
-	LinkedMapID *int     `json:"linkedMapId,omitempty" jsonschema:"existing map to link a new map to; implies wayfinder:map"`
+	LinkedMapID *int     `json:"linkedMapId,omitempty" jsonschema:"existing map; new map joins that map's Project and records an optional linked edge; implies wayfinder:map. Prefer projectId."`
 	Project     string   `json:"project,omitempty"`
+	ProjectID   *int     `json:"projectId,omitempty" jsonschema:"Project id to attach this issue to; use with labels=[wayfinder:map] to add a Decision Map to a Project"`
 	Assignee    string   `json:"assignee,omitempty"`
 }
 

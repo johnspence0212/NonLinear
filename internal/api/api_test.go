@@ -246,6 +246,36 @@ func TestLinkedMapsHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateMapOnProjectHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	p := postJSON(t, mux, "/api/projects", map[string]any{"title": "Idle Frontier"})
+	pid := p["id"]
+	first := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "First session",
+		"labels":    []string{"wayfinder:map"},
+		"projectId": pid,
+	})
+	second := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "Second session",
+		"labels":    []string{"wayfinder:map"},
+		"projectId": pid,
+	})
+	if first["projectId"] != pid || second["projectId"] != pid {
+		t.Fatalf("projectId first=%v second=%v want %v", first["projectId"], second["projectId"], pid)
+	}
+	got := getJSON(t, mux, "/api/projects/"+itoa(pid))
+	maps, _ := got["maps"].([]any)
+	if len(maps) != 2 {
+		t.Fatalf("maps: %v", got)
+	}
+}
+
 func TestProjectLifecycle(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

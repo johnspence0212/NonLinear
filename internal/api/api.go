@@ -149,6 +149,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		ParentID    *int     `json:"parentId"`
 		LinkedMapID *int     `json:"linkedMapId"`
 		Project     string   `json:"project"`
+		ProjectID   *int     `json:"projectId"`
 		Assignee    *string  `json:"assignee"`
 	}
 	if !decode(w, r, &body) {
@@ -161,6 +162,7 @@ func (h *Handler) create(w http.ResponseWriter, r *http.Request) {
 		ParentID:    body.ParentID,
 		LinkedMapID: body.LinkedMapID,
 		Project:     body.Project,
+		ProjectID:   body.ProjectID,
 		Assignee:    body.Assignee,
 	})
 	if err != nil {

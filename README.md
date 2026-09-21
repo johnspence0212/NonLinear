@@ -95,17 +95,19 @@ Wayfinder operations on this tracker:
 | Resolve | `resolve_issue`, then `update_issue` on the map |
 | Export a map | `export_map` |
 | Import a map | `import_map` |
-| Link maps | `create_issue` with `linkedMapId`, or `set_linked_maps` |
+| Add a map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
+| Optional map-to-map edge | `set_linked_maps` (does not group; map UI does not show it) |
 
 The map UI shows children as a tree: `*` frontier, `.` blocked, `@` claimed, `x` closed. Blocked tickets list what they wait on. Opening a ticket shows **blocked by** (and **blocks**) as clickable rows.
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementation Plan. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
+A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
 
 | Move | MCP tool |
 | --- | --- |
 | List / get / create project | `list_projects`, `get_project`, `create_project` |
+| Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
 | Map ready for spec | `ready_for_spec` |
@@ -124,7 +126,7 @@ A **Project** (`P-{id}`) is the parent of a Decision Map → Spec → Implementa
 
 ## Views
 
-Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Map → Spec → Plan. Maps still open at `#/map/12`. From a map you can start another map as a **linked map**: both stay top-level (delete does not cascade) and each shows the other.
+Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Maps → Spec → Plan. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
 
 | View | Shows |
 | --- | --- |
@@ -134,7 +136,7 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
 | `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
 | `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
-| `#/project/{id}` | Project destination, derived stage, Decision Map / Spec / Plan rows |
+| `#/project/{id}` | Project destination, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
 | `#/spec/{id}` | Spec body, approve, create implementation plan |
 | `#/plan/{id}` | Plan body plus ticket list / compose / blockers (same as a map's tickets) |
 | `settings` | Version, data path, import a map file, wipe the database |

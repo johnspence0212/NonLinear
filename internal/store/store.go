@@ -46,6 +46,7 @@ type CreateIssue struct {
 	ParentID    *int
 	LinkedMapID *int
 	Project     string
+	ProjectID   *int
 	Assignee    *string
 }
 
@@ -535,7 +536,11 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 			return model.IssueView{}, fmt.Errorf("%w: parent %d", ErrNotFound, *in.ParentID)
 		}
 	}
+	if in.ProjectID != nil && s.findProjectLocked(*in.ProjectID) == nil {
+		return model.IssueView{}, fmt.Errorf("%w: project %d", ErrNotFound, *in.ProjectID)
+	}
 	labels := uniqueStrings(in.Labels)
+	var linkedTarget *model.Issue
 	if in.LinkedMapID != nil {
 		target, ok := s.findLocked(*in.LinkedMapID)
 		if !ok {
@@ -544,6 +549,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		if !model.IsMap(target) {
 			return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map", ErrInvalid, *in.LinkedMapID)
 		}
+		linkedTarget = &target
 		if !model.HasLabel(model.Issue{Labels: labels}, "wayfinder:map") {
 			labels = append([]string{"wayfinder:map"}, labels...)
 		}
@@ -572,12 +578,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		UpdatedAt:  now,
 		Comments:   []model.Comment{},
 	}
-	if in.ParentID != nil {
-		if parent, ok := s.findLocked(*in.ParentID); ok && parent.ProjectID != nil {
-			pid := *parent.ProjectID
-			issue.ProjectID = &pid
-		}
-	}
+	issue.ProjectID = s.createProjectIDLocked(in, linkedTarget)
 	s.db.Issues = append(s.db.Issues, issue)
 	s.ensureMapProjectLocked(len(s.db.Issues) - 1)
 	if in.LinkedMapID != nil {
@@ -589,6 +590,27 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		return model.IssueView{}, err
 	}
 	return s.viewLocked(s.byIDLocked()[id]), nil
+}
+
+// createProjectIDLocked picks the Project a new issue belongs to.
+// Explicit projectId wins. Otherwise inherit from parent, then from a
+// linked source map. Maps with none wrap into an implicit Project later.
+func (s *Store) createProjectIDLocked(in CreateIssue, linkedTarget *model.Issue) *int {
+	if in.ProjectID != nil {
+		pid := *in.ProjectID
+		return &pid
+	}
+	if in.ParentID != nil {
+		if parent, ok := s.findLocked(*in.ParentID); ok && parent.ProjectID != nil {
+			pid := *parent.ProjectID
+			return &pid
+		}
+	}
+	if linkedTarget != nil && linkedTarget.ProjectID != nil {
+		pid := *linkedTarget.ProjectID
+		return &pid
+	}
+	return nil
 }
 
 func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
