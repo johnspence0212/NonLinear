@@ -17,11 +17,11 @@ func TestVersionedProjectRoundTrip(t *testing.T) {
 	if p.Identifier != "P-1" || p.Stage != model.StageWayfinding {
 		t.Fatalf("project: %+v", p)
 	}
-	m, err := s.Create(CreateIssue{Title: "Decision map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip NonLinear.\n"})
+	m, err := s.Create(CreateIssue{Title: "Decision map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip NonLinear.\n", ProjectID: &p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Kind != model.KindDecisionMap || m.ProjectID == nil {
+	if m.Kind != model.KindDecisionMap || m.ProjectID == nil || *m.ProjectID != p.ID {
 		t.Fatalf("map: %+v", m)
 	}
 	if _, err := s.ReadyForSpec(m.ID); err != nil {
@@ -130,25 +130,32 @@ func TestDerivedStageTable(t *testing.T) {
 		{
 			name: "wayfinding",
 			setup: func(s *Store) int {
-				m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+				p, err := s.CreateProject(CreateProject{Title: "Proj"})
 				if err != nil {
 					t.Fatal(err)
 				}
-				return *m.ProjectID
+				if _, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID}); err != nil {
+					t.Fatal(err)
+				}
+				return p.ID
 			},
 			want: model.StageWayfinding,
 		},
 		{
 			name: "ready_for_spec",
 			setup: func(s *Store) int {
-				m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+				p, err := s.CreateProject(CreateProject{Title: "Proj"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
 				if err != nil {
 					t.Fatal(err)
 				}
 				if _, err := s.ReadyForSpec(m.ID); err != nil {
 					t.Fatal(err)
 				}
-				return *m.ProjectID
+				return p.ID
 			},
 			want: model.StageReadyForSpec,
 		},
@@ -270,7 +277,11 @@ func TestFrontierExcludesSpecAndPlan(t *testing.T) {
 
 func mustMapReady(t *testing.T, s *Store) model.IssueView {
 	t.Helper()
-	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip it.\n"})
+	p, err := s.CreateProject(CreateProject{Title: "Proj"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip it.\n", ProjectID: &p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -343,6 +354,23 @@ func TestAdvanceToSpec(t *testing.T) {
 	}
 }
 
+func TestCreateMapDoesNotCreateProject(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Kind != model.KindDecisionMap {
+		t.Fatalf("kind: %s", m.Kind)
+	}
+	if m.ProjectID != nil || m.ProjectRef != nil {
+		t.Fatalf("standalone map created a project: projectId=%v ref=%+v", m.ProjectID, m.ProjectRef)
+	}
+	if n := len(s.ListProjects()); n != 0 {
+		t.Fatalf("projects %d", n)
+	}
+}
+
 func TestCreateMapOnExistingProject(t *testing.T) {
 	s := testStore(t)
 	p, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
@@ -384,6 +412,9 @@ func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if m.ProjectID != nil {
+		t.Fatalf("standalone map should have no project: %v", m.ProjectID)
+	}
 	parent := m.ID
 	child, err := s.Create(CreateIssue{Title: "Lock class", ParentID: &parent})
 	if err != nil {
@@ -392,10 +423,6 @@ func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
 	dest, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
 	if err != nil {
 		t.Fatal(err)
-	}
-	srcID := *m.ProjectID
-	if srcID == dest.ID {
-		t.Fatal("expected implicit project distinct from dest")
 	}
 	got, err := s.MoveToProject(MoveToProject{ID: &m.ID, ProjectID: dest.ID})
 	if err != nil {
@@ -412,13 +439,6 @@ func TestMoveIssueToProjectMovesDescendants(t *testing.T) {
 		if issue.ProjectID == nil || *issue.ProjectID != dest.ID {
 			t.Fatalf("issue %d projectId %v want %d", id, issue.ProjectID, dest.ID)
 		}
-	}
-	src, err := s.GetProject(srcID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(src.Maps) != 0 {
-		t.Fatalf("source still has maps: %+v", src.Maps)
 	}
 }
 
@@ -454,7 +474,11 @@ func TestMoveAllIssuesFromProject(t *testing.T) {
 
 func TestDeleteProjectRemovesIssues(t *testing.T) {
 	s := testStore(t)
-	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}})
+	p, err := s.CreateProject(CreateProject{Title: "Solo"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Create(CreateIssue{Title: "Solo loop", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -462,7 +486,7 @@ func TestDeleteProjectRemovesIssues(t *testing.T) {
 	if _, err := s.Create(CreateIssue{Title: "Lock class", ParentID: &parent}); err != nil {
 		t.Fatal(err)
 	}
-	pid := *m.ProjectID
+	pid := p.ID
 	got, err := s.DeleteProject(pid)
 	if err != nil {
 		t.Fatal(err)

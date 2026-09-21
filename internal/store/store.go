@@ -580,7 +580,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 	}
 	issue.ProjectID = s.createProjectIDLocked(in, linkedTarget)
 	s.db.Issues = append(s.db.Issues, issue)
-	s.ensureMapProjectLocked(len(s.db.Issues) - 1)
+	s.ensureMapLocked(len(s.db.Issues) - 1)
 	if in.LinkedMapID != nil {
 		if err := s.setLinkedMapsLocked(id, []int{*in.LinkedMapID}); err != nil {
 			return model.IssueView{}, err
@@ -594,7 +594,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 
 // createProjectIDLocked picks the Project a new issue belongs to.
 // Explicit projectId wins. Otherwise inherit from parent, then from a
-// linked source map. Maps with none wrap into an implicit Project later.
+// linked source map. A map with none stays off every Project.
 func (s *Store) createProjectIDLocked(in CreateIssue, linkedTarget *model.Issue) *int {
 	if in.ProjectID != nil {
 		pid := *in.ProjectID
@@ -667,7 +667,7 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	}
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
-	s.ensureMapProjectLocked(idx)
+	s.ensureMapLocked(idx)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}

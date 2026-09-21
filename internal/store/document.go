@@ -106,12 +106,10 @@ func NormalizeDocument(db *model.DB) {
 	if db.Projects == nil {
 		db.Projects = []model.Project{}
 	}
-	seen := map[int]int{}
 	for i, p := range db.Projects {
 		if p.Identifier == "" {
 			db.Projects[i].Identifier = model.ProjectIdentifier(p.ID)
 		}
-		seen[p.ID] = i
 	}
 	for i := range db.Issues {
 		issue := &db.Issues[i]
@@ -123,20 +121,6 @@ func NormalizeDocument(db *model.DB) {
 		}
 		if issue.Lifecycle == "" {
 			issue.Lifecycle = model.MapLifecycleActive
-		}
-		if issue.ProjectID == nil {
-			pid := issue.ID
-			issue.ProjectID = &pid
-			if _, ok := seen[pid]; !ok {
-				db.Projects = append(db.Projects, model.Project{
-					ID:         pid,
-					Identifier: model.ProjectIdentifier(pid),
-					Title:      issue.Title,
-					CreatedAt:  issue.CreatedAt,
-					UpdatedAt:  issue.UpdatedAt,
-				})
-				seen[pid] = len(db.Projects) - 1
-			}
 		}
 	}
 	byID := map[int]model.Issue{}

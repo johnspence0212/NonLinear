@@ -266,7 +266,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_project",
-		Description: "Create a Project parent. Standalone maps also get an implicit Project (id = map id) on load; use this only when you want an explicit parent first.",
+		Description: "Create a Project parent. Creating a map does not create a Project. Attach a map with create_issue projectId, or move_to_project.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.CreateProject(store.CreateProject{Title: in.Title, Destination: in.Destination})
 		if err != nil {
@@ -277,7 +277,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "move_to_project",
-		Description: "Move issues onto another Project. Pass id to move one issue and its descendants (map tickets, plan tickets). Pass fromProjectId to move every issue currently on that Project (maps, specs, plans, and their children). Destination is projectId. Use this when a map wrapped in an implicit Project (P-id = map id) should live under an explicit Project instead.",
+		Description: "Move issues onto another Project. Pass id to move one issue and its descendants (map tickets, plan tickets). Pass fromProjectId to move every issue currently on that Project (maps, specs, plans, and their children). Destination is projectId. Use this to put a standalone map onto a Project.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in moveToProjectInput) (*mcp.CallToolResult, any, error) {
 		result, err := st.MoveToProject(store.MoveToProject{ID: in.ID, FromProjectID: in.FromProjectID, ProjectID: in.ProjectID})
 		if err != nil {

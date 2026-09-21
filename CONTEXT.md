@@ -26,7 +26,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 `schemaVersion` 1. Missing or `0` is legacy: Open loads without writing. The first mutating save upgrades the whole file atomically (`schemaVersion: 1` plus `projects`). Unknown top-level JSON keys are kept and re-emitted. Schema `>1` is an error and does not write.
 
-Standalone maps with no `projectId` wrap in an implicit Project whose id equals the map id (`P-6` for map `NL-6`). Same map, same parent across loads. The wrap is in memory until the next save.
+A map with no `projectId` stays off every Project. Creating a map does not invent a Project. Attach it with `projectId` on create, or `move_to_project`.
 
 ## Lifecycle actions
 

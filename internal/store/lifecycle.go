@@ -53,7 +53,7 @@ func (s *Store) issuesForProjectLocked(id int) []model.Issue {
 	return out
 }
 
-func (s *Store) ensureMapProjectLocked(idx int) {
+func (s *Store) ensureMapLocked(idx int) {
 	issue := &s.db.Issues[idx]
 	if !model.IsMap(*issue) {
 		return
@@ -63,24 +63,6 @@ func (s *Store) ensureMapProjectLocked(idx int) {
 	}
 	if issue.Lifecycle == "" {
 		issue.Lifecycle = model.MapLifecycleActive
-	}
-	if issue.ProjectID == nil {
-		pid := issue.ID
-		issue.ProjectID = &pid
-	}
-	pid := *issue.ProjectID
-	if s.findProjectLocked(pid) == nil {
-		s.db.Projects = append(s.db.Projects, model.Project{
-			ID:          pid,
-			Identifier:  model.ProjectIdentifier(pid),
-			Title:       issue.Title,
-			Destination: model.ExtractDestination(issue.Body),
-			CreatedAt:   issue.CreatedAt,
-			UpdatedAt:   issue.UpdatedAt,
-		})
-	}
-	if s.db.NextProjectID <= pid {
-		s.db.NextProjectID = pid + 1
 	}
 }
 

@@ -53,9 +53,9 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. Skill runs (`/to-spec`, `/to-tickets`) are a handoff; do not expect NonLinear to fill the document.
 
-- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Standalone maps wrap in an implicit Project whose id equals the map id.
+- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Creating a map does not create a Project.
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
-- **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this when a map landed on an implicit Project (`P-19` for map `NL-19`) and should live under an explicit one.
+- **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this to put a standalone map onto a Project.
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.
 - **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.
 - **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.

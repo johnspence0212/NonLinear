@@ -102,7 +102,7 @@ The map UI shows children as a tree: `*` frontier, `.` blocked, `@` claimed, `x`
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
+A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Creating a map does not create a Project — pass `projectId` or use `move_to_project`. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
 
 | Move | MCP tool |
 | --- | --- |

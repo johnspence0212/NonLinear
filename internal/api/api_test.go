@@ -246,6 +246,30 @@ func TestLinkedMapsHTTP(t *testing.T) {
 	}
 }
 
+func TestCreateMapDoesNotCreateProjectHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	m := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "First session",
+		"labels": []string{"wayfinder:map"},
+	})
+	if m["kind"] != "decision-map" {
+		t.Fatalf("kind: %v", m)
+	}
+	if _, ok := m["projectId"]; ok && m["projectId"] != nil {
+		t.Fatalf("standalone map created a project: %v", m["projectId"])
+	}
+	projects := getJSON(t, mux, "/api/projects")
+	if list, _ := projects["projects"].([]any); len(list) != 0 {
+		t.Fatalf("projects: %v", projects)
+	}
+}
+
 func TestCreateMapOnProjectHTTP(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {
@@ -284,10 +308,12 @@ func TestProjectLifecycle(t *testing.T) {
 	mux := http.NewServeMux()
 	(&Handler{Store: st}).Register(mux)
 
+	p := postJSON(t, mux, "/api/projects", map[string]any{"title": "Ship"})
 	m := postJSON(t, mux, "/api/issues", map[string]any{
-		"title":  "Decision map",
-		"labels": []string{"wayfinder:map"},
-		"body":   "## Destination\n\nShip it.\n",
+		"title":     "Decision map",
+		"labels":    []string{"wayfinder:map"},
+		"body":      "## Destination\n\nShip it.\n",
+		"projectId": p["id"],
 	})
 	ready := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/ready-for-spec", map[string]any{})
 	if ready["lifecycle"] != "ready_for_spec" {
@@ -348,11 +374,13 @@ func TestMoveAndDeleteProjectHTTP(t *testing.T) {
 	mux := http.NewServeMux()
 	(&Handler{Store: st}).Register(mux)
 
-	m := postJSON(t, mux, "/api/issues", map[string]any{
-		"title":  "Solo loop",
-		"labels": []string{"wayfinder:map"},
+	src := postJSON(t, mux, "/api/projects", map[string]any{"title": "Solo"})
+	srcID := int(src["id"].(float64))
+	postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "Solo loop",
+		"labels":    []string{"wayfinder:map"},
+		"projectId": srcID,
 	})
-	srcID := int(m["projectId"].(float64))
 	dest := postJSON(t, mux, "/api/projects", map[string]any{"title": "Idle Frontier"})
 	destID := int(dest["id"].(float64))
 	moved := postJSON(t, mux, "/api/projects/move", map[string]any{

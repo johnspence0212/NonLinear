@@ -469,12 +469,21 @@ func TestMCPProjectLifecycle(t *testing.T) {
 	}
 	defer session.Close()
 
+	proj, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Ship"},
+	})
+	if err != nil || proj.IsError {
+		t.Fatalf("project: %v %v", err, proj)
+	}
+	pid := int(toolJSON(t, proj)["id"].(float64))
 	created, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name: "create_issue",
 		Arguments: map[string]any{
-			"title":  "Map",
-			"labels": []string{"wayfinder:map"},
-			"body":   "## Destination\n\nShip.\n",
+			"title":     "Map",
+			"labels":    []string{"wayfinder:map"},
+			"body":      "## Destination\n\nShip.\n",
+			"projectId": pid,
 		},
 	})
 	if err != nil || created.IsError {
@@ -539,14 +548,21 @@ func TestMCPMoveAndDeleteProject(t *testing.T) {
 	}
 	defer session.Close()
 
+	src, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Solo"},
+	})
+	if err != nil || src.IsError {
+		t.Fatalf("src: %v %v", err, src)
+	}
+	srcID := int(toolJSON(t, src)["id"].(float64))
 	created, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "create_issue",
-		Arguments: map[string]any{"title": "Solo loop", "labels": []string{"wayfinder:map"}},
+		Arguments: map[string]any{"title": "Solo loop", "labels": []string{"wayfinder:map"}, "projectId": srcID},
 	})
 	if err != nil || created.IsError {
 		t.Fatalf("map: %v %v", err, created)
 	}
-	srcID := int(toolJSON(t, created)["projectId"].(float64))
 	dest, err := session.CallTool(ctx, &mcp.CallToolParams{
 		Name:      "create_project",
 		Arguments: map[string]any{"title": "Idle Frontier"},

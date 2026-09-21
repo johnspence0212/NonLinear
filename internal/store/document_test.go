@@ -63,7 +63,7 @@ func TestLegacyFixtureDecodes(t *testing.T) {
 	}
 }
 
-func TestLegacyImplicitProjects(t *testing.T) {
+func TestLegacyMapsDoNotInventProjects(t *testing.T) {
 	raw, err := os.ReadFile(filepath.Join("testdata", "legacy-v0.json"))
 	if err != nil {
 		t.Fatal(err)
@@ -72,33 +72,13 @@ func TestLegacyImplicitProjects(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(db.Projects) != 2 {
+	if len(db.Projects) != 0 {
 		t.Fatalf("projects: %+v", db.Projects)
 	}
-	byID := map[int]model.Project{}
-	for _, p := range db.Projects {
-		byID[p.ID] = p
-	}
-	p1, ok := byID[1]
-	if !ok || p1.Identifier != "P-1" || p1.Title != "TUI map" {
-		t.Fatalf("P-1: %+v", p1)
-	}
-	p3, ok := byID[3]
-	if !ok || p3.Identifier != "P-3" || p3.Title != "Linked session" {
-		t.Fatalf("P-3: %+v", p3)
-	}
 	for _, issue := range db.Issues {
-		if issue.ID == 1 || issue.ID == 2 || issue.ID == 4 {
-			if issue.ProjectID == nil || *issue.ProjectID != 1 {
-				t.Fatalf("issue %d projectId: %v", issue.ID, issue.ProjectID)
-			}
+		if issue.ProjectID != nil {
+			t.Fatalf("issue %d projectId: %v", issue.ID, issue.ProjectID)
 		}
-		if issue.ID == 3 && (issue.ProjectID == nil || *issue.ProjectID != 3) {
-			t.Fatalf("map 3 projectId: %v", issue.ProjectID)
-		}
-	}
-	if db.NextProjectID != 4 {
-		t.Fatalf("nextProjectId %d", db.NextProjectID)
 	}
 }
 
@@ -139,8 +119,8 @@ func TestOpenLegacyDoesNotWrite(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.ProjectRef == nil || m.ProjectRef.Identifier != "P-1" {
-		t.Fatalf("implicit project not in memory: %+v", m.ProjectRef)
+	if m.ProjectRef != nil {
+		t.Fatalf("standalone map should have no project: %+v", m.ProjectRef)
 	}
 }
 

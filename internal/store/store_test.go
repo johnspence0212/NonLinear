@@ -326,7 +326,11 @@ func TestCreateAndAddLabel(t *testing.T) {
 
 func TestLinkedMapsAreSymmetricAndDoNotCascade(t *testing.T) {
 	s := testStore(t)
-	a, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}})
+	p, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	a, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -337,10 +341,10 @@ func TestLinkedMapsAreSymmetricAndDoNotCascade(t *testing.T) {
 	if !model.IsMap(b.Issue) {
 		t.Fatal("linkedMapId should make a map")
 	}
-	if a.ProjectID == nil || b.ProjectID == nil || *a.ProjectID != *b.ProjectID {
+	if a.ProjectID == nil || b.ProjectID == nil || *a.ProjectID != *b.ProjectID || *a.ProjectID != p.ID {
 		t.Fatalf("linkedMapId should join the source project: a=%v b=%v", a.ProjectID, b.ProjectID)
 	}
-	proj, err := s.GetProject(*a.ProjectID)
+	proj, err := s.GetProject(p.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
