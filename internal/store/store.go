@@ -631,7 +631,11 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 		issue.Body = *in.Body
 	}
 	if in.Labels != nil {
-		issue.Labels = uniqueStrings(*in.Labels)
+		labels, err := s.normalizeLabelsLocked(*in.Labels)
+		if err != nil {
+			return model.IssueView{}, err
+		}
+		issue.Labels = labels
 	}
 	if in.State != nil {
 		state := strings.TrimSpace(*in.State)
@@ -968,6 +972,27 @@ func (s *Store) saveLocked() error {
 		return err
 	}
 	return os.Rename(tmpName, s.path)
+}
+
+func (s *Store) normalizeLabelsLocked(in []string) ([]string, error) {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, raw := range in {
+		if strings.TrimSpace(raw) == "" {
+			continue
+		}
+		label, err := normalizeLabel(raw)
+		if err != nil {
+			return nil, err
+		}
+		if seen[label] {
+			continue
+		}
+		seen[label] = true
+		s.ensureLabelLocked(label)
+		out = append(out, label)
+	}
+	return out, nil
 }
 
 func uniqueStrings(in []string) []string {

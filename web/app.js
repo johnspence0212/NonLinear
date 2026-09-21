@@ -797,6 +797,7 @@ async function renderMap(id) {
       `<strong>${esc(map.identifier)}</strong>${stamp(life, map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(map.title)}</h1>
+        <div class="chips">${tagButtons(map.labels) || `<span class="muted">no tags</span>`}</div>
         <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
         <div class="actions">${actions}</div>
       </div>`
@@ -1272,8 +1273,20 @@ async function renderIssue(id) {
   syncChrome();
 }
 
+function formatTags(labels) {
+  return (labels || []).join(" ");
+}
+
+function parseTags(raw) {
+  return String(raw || "")
+    .split(/[,\s]+/)
+    .map((s) => s.replace(/^#+/, "").trim())
+    .filter(Boolean);
+}
+
 function editFormHTML(issue) {
   return `<label class="edit-label">title<input id="edit-title" value="${esc(issue.title).replaceAll('"', "&quot;")}" /></label>
+  <label class="edit-label">tags<input id="edit-labels" value="${esc(formatTags(issue.labels)).replaceAll('"', "&quot;")}" placeholder="space or comma · # optional" /></label>
   <label class="edit-label">body<textarea id="edit-body">${esc(issue.body || "")}</textarea></label>
   <div class="actions"><button data-save>save</button><button data-cancel>cancel</button></div>`;
 }
@@ -1285,9 +1298,10 @@ function bindEditForm(issue) {
   save.addEventListener("click", async () => {
     const title = main.querySelector("#edit-title").value.trim();
     const body = main.querySelector("#edit-body").value;
+    const labels = parseTags(main.querySelector("#edit-labels")?.value || "");
     if (!title) return;
     try {
-      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body }) });
+      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body, labels }) });
       await paint();
     } catch (err) {
       state.error = err.message;

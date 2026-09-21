@@ -237,6 +237,36 @@ func TestDeleteMissing(t *testing.T) {
 	}
 }
 
+func TestUpdateMapLabels(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	next := []string{"wayfinder:map", "#focus"}
+	got, err := s.Update(m.ID, UpdateIssue{Labels: &next})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !model.HasLabel(got.Issue, "wayfinder:map") || !model.HasLabel(got.Issue, "focus") {
+		t.Fatalf("labels: %v", got.Labels)
+	}
+	found := false
+	for _, l := range s.Labels() {
+		if l == "focus" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Fatal("catalog missing focus")
+	}
+	bad := []string{"has space"}
+	if _, err := s.Update(m.ID, UpdateIssue{Labels: &bad}); err == nil {
+		t.Fatal("expected space error")
+	}
+}
+
 func TestUpdateComment(t *testing.T) {
 	s := testStore(t)
 	issue, err := s.Create(CreateIssue{Title: "Ticket"})
