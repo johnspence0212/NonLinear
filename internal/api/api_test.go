@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/cursor"
@@ -412,10 +413,11 @@ func TestCursorRunHTTP(t *testing.T) {
 		t.Fatal(err)
 	}
 	svc := cursor.New(dir)
-	ws := t.TempDir()
-	if _, err := svc.Save(cursor.Settings{Model: "composer-2", Workspace: ws}); err != nil {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	svc.Getwd = func() (string, error) { return root, nil }
 	svc.LookPath = func(name string) (string, error) {
 		if name == "agent" {
 			return "/bin/agent", nil
@@ -445,8 +447,11 @@ func TestCursorRunHTTP(t *testing.T) {
 	})
 
 	sent := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "issue", "id": openTicket["id"]})
-	if sent["mode"] != "print" || sent["model"] != "composer-2" {
+	if sent["mode"] != "print" || sent["workspace"] != root {
 		t.Fatalf("sent: %v", sent)
+	}
+	if strings.Contains(fmt.Sprint(sent["prompt"]), "--model") {
+		t.Fatalf("prompt should not carry flags: %v", sent)
 	}
 	reqRaw, _ := json.Marshal(map[string]any{"action": "issue", "id": blocked["id"]})
 	req := httptest.NewRequest(http.MethodPost, "/api/cursor/run", bytes.NewReader(reqRaw))

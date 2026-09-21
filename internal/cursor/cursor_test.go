@@ -10,11 +10,21 @@ import (
 	"github.com/johnspence0212/NonLinear/internal/model"
 )
 
-func TestParseModels(t *testing.T) {
-	got := ParseModels("Available models:\n\n- composer-2 (current)\n- gpt-5.4\n* claude-4.5\nnot a model\n")
-	want := []string{"composer-2", "gpt-5.4", "claude-4.5"}
-	if strings.Join(got, ",") != strings.Join(want, ",") {
-		t.Fatalf("models %v", got)
+func TestGitRootAndModelConfig(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "web", "app")
+	if err := os.MkdirAll(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := gitRoot(nested); got != root {
+		t.Fatalf("git root %s", got)
+	}
+	raw := []byte(`{"model":{"modelId":"composer-2","max":true}}`)
+	if got := modelFromConfig(raw); got != "composer-2" {
+		t.Fatalf("model %q", got)
 	}
 }
 
@@ -47,15 +57,24 @@ func TestPrompt(t *testing.T) {
 	}
 }
 
-func TestSaveAndRunUsesModel(t *testing.T) {
-	dir := t.TempDir()
-	s := New(dir)
-	ws := t.TempDir()
-	if _, err := s.Save(Settings{Model: "composer-2", Workspace: ws}); err != nil {
+func TestRunLeavesModelAndWorkspaceToCLI(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "cli-config.json")
+	if err := os.WriteFile(cfg, []byte(`{"model":{"id":"composer-2"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := New(t.TempDir())
+	s.ConfigPath = cfg
+	s.Getwd = func() (string, error) { return filepath.Join(root, "cmd"), nil }
+	if err := os.MkdirAll(filepath.Join(root, "cmd"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	var gotName string
 	var gotArgs []string
+	var cmd *exec.Cmd
 	s.LookPath = func(name string) (string, error) {
 		if name == "agent" {
 			return "/bin/agent", nil
@@ -65,22 +84,22 @@ func TestSaveAndRunUsesModel(t *testing.T) {
 	s.Command = func(name string, args ...string) *exec.Cmd {
 		gotName = name
 		gotArgs = append([]string(nil), args...)
-		return exec.Command("true")
+		cmd = exec.Command("true")
+		return cmd
 	}
 	issue := model.IssueView{Issue: model.Issue{ID: 3, Identifier: "NL-3", Title: "Ship it", State: model.StateOpen}}
 	res, err := s.Run(t.Context(), "issue", issue)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Mode != "print" || res.Model != "composer-2" {
+	if res.Mode != "print" || res.Model != "composer-2" || res.Workspace != root {
 		t.Fatalf("result %+v", res)
 	}
-	if gotName != "/bin/agent" || !contains(gotArgs, "--model") || !contains(gotArgs, "composer-2") || !contains(gotArgs, "--workspace") {
+	if gotName != "/bin/agent" || contains(gotArgs, "--model") || contains(gotArgs, "--workspace") {
 		t.Fatalf("cmd %s %v", gotName, gotArgs)
 	}
-	raw, err := os.ReadFile(filepath.Join(dir, "cursor.json"))
-	if err != nil || !strings.Contains(string(raw), "composer-2") {
-		t.Fatalf("settings: %s %v", raw, err)
+	if cmd.Dir != root {
+		t.Fatalf("dir %s", cmd.Dir)
 	}
 }
 

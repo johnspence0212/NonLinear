@@ -1559,22 +1559,14 @@ async function renderSearch(query) {
 
 async function renderSettings() {
   const s = state.stats;
-  let cursor = { model: "", workspace: "", models: [], cli: false, cliError: "" };
+  let cursor = { model: "", workspace: "", cli: false, cliError: "" };
   try {
     cursor = await api("/api/cursor");
   } catch (err) {
     state.error = err.message;
   }
-  const models = cursor.models || [];
-  const known = models.includes(cursor.model);
-  const modelField = models.length
-    ? `<select id="cursor-model">
-        <option value="">cli default</option>
-        ${cursor.model && !known ? `<option value="${esc(cursor.model)}" selected>${esc(cursor.model)}</option>` : ""}
-        ${models.map((m) => `<option value="${esc(m)}" ${m === cursor.model ? "selected" : ""}>${esc(m)}</option>`).join("")}
-      </select>`
-    : `<input id="cursor-model" value="${esc(cursor.model || "").replaceAll('"', "&quot;")}" placeholder="model id" autocomplete="off" />`;
   const cli = cursor.cli ? "found" : esc(cursor.cliError || "not found");
+  const model = cursor.model ? esc(cursor.model) : "cli default";
   main.innerHTML = `${flash()}${box(
     "<strong>settings</strong>",
     `<div class="box-b pad">
@@ -1586,12 +1578,10 @@ async function renderSettings() {
         <div class="rail-line">maps <b>${s.maps}</b></div>
         <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
         <div class="rail-line">cursor cli <b>${cli}</b></div>
+        <div class="rail-line">model <b>${model}</b></div>
+        <div class="rail-line">repo <b>${esc(cursor.workspace || "")}</b></div>
       </div>
-      <form id="cursor-settings" class="pad">
-        <label class="edit-label">default model${modelField}</label>
-        <label class="edit-label">workspace<input id="cursor-workspace" value="${esc(cursor.workspace || "").replaceAll('"', "&quot;")}" placeholder="/path/to/repo" autocomplete="off" /></label>
-        <div class="actions"><button type="submit">save cursor</button></div>
-      </form>
+      <p class="muted">model and repo come from the cursor cli. start nonlinear in the repo.</p>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
       <div class="actions">
         <button type="button" data-import-map>import map</button>
@@ -1599,27 +1589,6 @@ async function renderSettings() {
       </div>
     </div>`
   )}`;
-  const form = $("#cursor-settings");
-  if (form) {
-    form.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      try {
-        await api("/api/cursor", {
-          method: "PUT",
-          body: JSON.stringify({
-            model: form.querySelector("#cursor-model")?.value || "",
-            workspace: form.querySelector("#cursor-workspace")?.value || "",
-          }),
-        });
-        state.error = "";
-        state.notice = "saved cursor settings";
-        await renderSettings();
-      } catch (err) {
-        state.error = err.message;
-        await renderSettings();
-      }
-    });
-  }
   const btn = $("#wipe");
   btn.addEventListener("click", async () => {
     if (!btn.classList.contains("armed")) {

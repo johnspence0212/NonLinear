@@ -32,7 +32,7 @@ A map with no `projectId` stays off every Project. Creating a map does not inven
 
 Explicit. Not inferred from “zero open tickets”. MCP lifecycle actions do not run skills or fabricate a completed document.
 
-The UI can hand work to the Cursor CLI (`agent`). Settings store the default model and the workspace the CLI runs in. **to spec** on a map runs `/to-spec`. **to plan** on a map runs `/to-tickets`. **approve spec** approves, then runs `/to-tickets`. An open unblocked ticket can be **sent to cursor**.
+The UI can hand work to the Cursor CLI (`agent`). The model is the CLI's own selection (`~/.cursor/cli-config.json`). The repo is the git root of the directory NonLinear was started in. **to spec** on a map runs `/to-spec`. **to plan** on a map runs `/to-tickets`. **approve spec** approves, then runs `/to-tickets`. An open unblocked ticket can be **sent to cursor**.
 
 1. Map **ready for spec** → map `ready_for_spec`
 2. **Create spec** → draft spec, empty to-spec skeleton, destination copied from the map if present
