@@ -221,6 +221,11 @@ function showSettingsLoading() {
   syncChrome();
 }
 
+async function holdBusy(started, minMs = 700) {
+  const wait = minMs - (Date.now() - started);
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+}
+
 async function sendCursor(action, id) {
   const wait = {
     issue: "sending to cursor…",
@@ -228,13 +233,20 @@ async function sendCursor(action, id) {
     "to-plan": "starting to plan…",
     "to-tickets": "starting to tickets…",
   };
+  const started = Date.now();
   setBusy(wait[action] || "talking to cursor…");
-  const res = await api("/api/cursor/run", {
-    method: "POST",
-    body: JSON.stringify({ action, id }),
-  });
-  const model = res.model ? ` · ${res.model}` : "";
-  state.notice = res.mode === "terminal" ? `opened cursor${model}` : `sent to cursor${model}`;
+  try {
+    const res = await api("/api/cursor/run", {
+      method: "POST",
+      body: JSON.stringify({ action, id }),
+    });
+    await holdBusy(started);
+    const model = res.model ? ` · ${res.model}` : "";
+    state.notice = res.mode === "terminal" ? `opened cursor${model}` : `sent to cursor${model}`;
+  } catch (err) {
+    await holdBusy(started);
+    throw err;
+  }
 }
 
 function esc(s) {
