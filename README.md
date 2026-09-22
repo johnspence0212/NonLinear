@@ -102,7 +102,7 @@ The map UI shows children as a tree: `*` frontier, `.` blocked, `@` claimed, `x`
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Creating a map does not create a Project — pass `projectId` or use `move_to_project`. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
+A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Creating a map does not create a Project — pass `projectId` or use `move_to_project`. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and Tickets are `#/spec/{id}` and `#/plan/{id}`.
 
 | Move | MCP tool |
 | --- | --- |
@@ -114,8 +114,8 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementat
 | Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
 | Make the spec in one step (ready + draft spec) | `advance_to_spec` |
 | Approve spec | `approve_spec` |
-| Create implementation plan (does not run `/to-tickets`; parent each ticket to the plan id) | `create_plan` |
-| Make the plan in one step (spec if needed + approve + draft plan) | `advance_to_plan` |
+| Create tickets (does not run `/to-tickets`; parent each ticket to the Tickets id) | `create_plan` |
+| Make Tickets in one step (spec if needed + approve + draft Tickets) | `advance_to_plan` |
 | Start / deliver plan | `activate_plan`, `deliver_plan` |
 | Route is clear | `clear_route` |
 
@@ -127,7 +127,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementat
 
 ## Views
 
-Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Maps → Spec → Plan. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
+Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Maps → Spec → Tickets. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
 
 | View | Shows |
 | --- | --- |
@@ -137,9 +137,9 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
 | `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
 | `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
-| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
-| `#/spec/{id}` | Spec body, approve / to plan (creates this spec's plan, then `/to-tickets` on the plan) |
-| `#/plan/{id}` | Plan body plus ticket list / compose / blockers. Implementation tickets are children of the plan |
+| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows; compose another map onto this Project |
+| `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
+| `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.

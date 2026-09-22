@@ -378,7 +378,7 @@ func Prompt(action string, issue model.IssueView) (string, error) {
 		if !model.IsPlan(issue.Issue) {
 			return "", fmt.Errorf("%w: not a plan", ErrInvalid)
 		}
-		return fmt.Sprintf("/to-tickets #%s\n\nFill implementation plan %s (id %d). Create each implementation ticket with parentId=%d so it lands on this plan. Do not parent tickets to a map and do not leave them without a parent.", issue.Identifier, issue.Identifier, issue.ID, issue.ID), nil
+		return fmt.Sprintf("/to-tickets #%s\n\nFill tickets %s (id %d). Create each implementation ticket with parentId=%d so it lands on this tickets list. Do not parent tickets to a map and do not leave them without a parent.", issue.Identifier, issue.Identifier, issue.ID, issue.ID), nil
 	default:
 		return "", fmt.Errorf("%w: unknown action", ErrInvalid)
 	}

@@ -240,7 +240,7 @@ async function sendCursor(action, id) {
   const wait = {
     issue: "sending to cursor…",
     "to-spec": "starting to spec…",
-    "to-plan": "starting to plan…",
+    "to-plan": "starting to tickets…",
     "to-tickets": "starting to tickets…",
   };
   const started = Date.now();
@@ -532,7 +532,7 @@ function projectCounts(project) {
   const maps = (project.maps || []).length;
   const specs = (project.specs || []).length;
   const plans = (project.plans || []).length;
-  return `${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} plan${plans === 1 ? "" : "s"}`;
+  return `${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} tickets`;
 }
 
 function projectRowHTML(project, selected = false, nav = false) {
@@ -605,7 +605,7 @@ function renderList() {
   if (state.filter === "projects") {
     const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
     main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-      `<strong>projects</strong><span>decision map → spec → plan</span>`,
+      `<strong>projects</strong><span>decision map → spec → tickets</span>`,
       rows || `<div class="empty">no projects — compose one or create a map</div>`,
       composeBar("new project", "compose", "project")
     )}`;
@@ -891,7 +891,7 @@ async function renderMap(id) {
   const actions = [
     !hasSpec && life !== "cleared" ? `<button data-act="advance-spec">make spec</button>` : "",
     `<button data-act="to-spec">to spec</button>`,
-    `<button data-act="to-plan">to plan</button>`,
+    `<button data-act="to-tickets">to tickets</button>`,
     life !== "cleared" ? `<button data-act="clear-route">route is clear</button>` : "",
     `<button data-act="edit">edit map</button>`,
     `<button data-act="export">export</button>`,
@@ -1016,8 +1016,8 @@ async function renderProject(id) {
       (project.specs || []).map(artifactRowHTML).join("") || `<div class="empty">none — make the spec from the map</div>`
     )}
     ${box(
-      "<strong>implementation plan</strong>",
-      (project.plans || []).map(artifactRowHTML).join("") || `<div class="empty">none — approve a spec first</div>`
+      "<strong>tickets</strong>",
+      (project.plans || []).map(artifactRowHTML).join("") || `<div class="empty">none — make tickets from the spec</div>`
     )}`;
   renderRail(
     box(
@@ -1027,7 +1027,7 @@ async function renderProject(id) {
         ["repo", repo || "server default"],
         ["maps", (project.maps || []).length],
         ["specs", (project.specs || []).length],
-        ["plans", (project.plans || []).length],
+        ["tickets", (project.plans || []).length],
       ])
     )
   );
@@ -1105,8 +1105,8 @@ async function renderSpec(id) {
   const hasPlan = plans.length > 0;
   const actions = [
     issue.lifecycle === "draft" ? `<button data-act="approve">approve spec</button>` : "",
-    issue.lifecycle === "approved" ? `<button data-act="to-plan">to plan</button>` : "",
-    issue.lifecycle === "approved" && !hasPlan ? `<button data-act="create-plan">create implementation plan</button>` : "",
+    issue.lifecycle === "approved" ? `<button data-act="to-tickets">to tickets</button>` : "",
+    issue.lifecycle === "approved" && !hasPlan ? `<button data-act="create-plan">create tickets</button>` : "",
     `<button data-act="edit">edit</button>`,
     `<button data-act="delete" class="danger">delete</button>`,
   ]
@@ -1123,7 +1123,7 @@ async function renderSpec(id) {
         <div class="actions">${actions}</div>
       </div>`
     )}
-    ${hasPlan ? box("<strong>implementation plan</strong>", plans.map(artifactRowHTML).join("")) : ""}`;
+    ${hasPlan ? box("<strong>tickets</strong>", plans.map(artifactRowHTML).join("")) : ""}`;
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
   renderRail(
     box(
@@ -1182,7 +1182,7 @@ async function renderPlan(id) {
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(issue.title)}</h1>
-        <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty plan — fill via /to-tickets</span>`}</div>
+        <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty — fill via /to-tickets</span>`}</div>
         <div class="actions">${actions}</div>
       </div>`
     )}
@@ -1190,8 +1190,8 @@ async function renderPlan(id) {
     ${box(
       `<strong>tickets</strong><span class="mark">${open} open · ${done} done</span><div class="subnav">${filters}</div>`,
       `<div class="progress"><i style="width:${pct}%"></i></div>` +
-        (rows || `<div class="empty">no tickets on this plan</div>`),
-      composeBar("new ticket on this plan")
+        (rows || `<div class="empty">no tickets</div>`),
+      composeBar("new ticket")
     )}`;
   bindCompose({ parentId: issue.id });
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
@@ -1204,7 +1204,7 @@ async function renderPlan(id) {
   });
   renderRail(
     box(
-      "<strong>this plan</strong>",
+      "<strong>tickets</strong>",
       railLines([
         ["lifecycle", life],
         ["tickets", kids.length],
@@ -1550,8 +1550,9 @@ async function act(issue, kind) {
       armBusyButton("approve", "approving…");
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
       try {
-        const res = await sendCursor("to-plan", issue.id);
-        if (res && res.issue) location.hash = hrefFor(res.issue);
+        const target = await api(`/api/issues/${issue.id}/advance-to-plan`, { method: "POST", body: "{}" });
+        location.hash = hrefFor(target);
+        await sendCursor("to-tickets", target.id);
       } catch (err) {
         state.error = "approved. " + err.message;
       }
@@ -1559,11 +1560,10 @@ async function act(issue, kind) {
       return;
     }
     if (kind === "to-spec" || kind === "to-plan" || kind === "to-tickets" || kind === "send-cursor") {
-      const action = kind === "send-cursor" ? "issue" : kind;
+      const action = kind === "send-cursor" ? "issue" : kind === "to-plan" ? "to-tickets" : kind;
       const wait = {
         issue: "sending to cursor…",
         "to-spec": "starting to spec…",
-        "to-plan": "starting to plan…",
         "to-tickets": "starting to tickets…",
       };
       armBusyButton(kind, wait[action] || "talking to cursor…");
@@ -1572,15 +1572,15 @@ async function act(issue, kind) {
         target = await api(`/api/issues/${issue.id}/ensure-spec`, { method: "POST", body: "{}" });
         location.hash = hrefFor(target);
       }
-      if (kind === "to-plan") {
+      if (kind === "to-plan" || (kind === "to-tickets" && !isPlan(issue))) {
         target = await api(`/api/issues/${issue.id}/advance-to-plan`, { method: "POST", body: "{}" });
         location.hash = hrefFor(target);
       }
       try {
         await sendCursor(action, target.id);
       } catch (err) {
-        if (kind === "to-spec" || kind === "to-plan") {
-          state.error = `${kind === "to-spec" ? "spec ready." : "plan ready."} ${err.message}`;
+        if (kind === "to-spec" || kind === "to-plan" || kind === "to-tickets") {
+          state.error = `${kind === "to-spec" ? "spec ready." : "tickets ready."} ${err.message}`;
           await paint();
           return;
         }
@@ -1603,7 +1603,7 @@ async function act(issue, kind) {
     }
     if (kind === "delete") {
       const kids = (issue.children || []).length;
-      const label = isMap(issue) ? "map" : isSpec(issue) ? "spec" : isPlan(issue) ? "plan" : "issue";
+      const label = isMap(issue) ? "map" : isSpec(issue) ? "spec" : isPlan(issue) ? "tickets" : "issue";
       const extra = kids ? " and all children" : "";
       if (!confirm(`delete ${label} ${issue.identifier}${extra}?`)) return;
       await api(`/api/issues/${issue.id}`, { method: "DELETE" });

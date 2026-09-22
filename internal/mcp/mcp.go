@@ -354,7 +354,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "approve_spec",
-		Description: "Approve a draft Spec so an implementation plan can be created.",
+		Description: "Approve a draft Spec so Tickets can be created.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.ApproveSpec(in.ID)
 		if err != nil {
@@ -365,7 +365,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_plan",
-		Description: "Create a draft Implementation Plan from an approved Spec. Does not run /to-tickets. Create each implementation ticket with parentId set to the new plan id so it lands in the plan tickets section.",
+		Description: "Create a draft Tickets list from an approved Spec. Does not run /to-tickets. Create each implementation ticket with parentId set to the new Tickets id so it lands in the tickets section.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.CreatePlan(in.ID)
 		if err != nil {
@@ -376,7 +376,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "advance_to_plan",
-		Description: "Create (or return) the Implementation Plan for a map or spec. From a map: creates that map's spec if needed, approves it, and creates a new plan. Does not inherit another map's spec or plan. Does not run /to-tickets. Parent each implementation ticket to the returned plan id.",
+		Description: "Create (or return) the Tickets list for a map or spec. From a map: creates that map's spec if needed, approves it, and creates a new Tickets list. Does not inherit another map's spec or tickets. Does not run /to-tickets. Parent each implementation ticket to the returned id.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.AdvanceToPlan(in.ID)
 		if err != nil {
@@ -387,7 +387,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "activate_plan",
-		Description: "Move an Implementation Plan from draft to active (project stage implementing).",
+		Description: "Move Tickets from draft to active (project stage implementing).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.ActivatePlan(in.ID)
 		if err != nil {
@@ -398,7 +398,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "deliver_plan",
-		Description: "Mark an active Implementation Plan delivered (project stage complete). Explicit; not inferred from zero open tickets.",
+		Description: "Mark active Tickets delivered (project stage complete). Explicit; not inferred from zero open tickets.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.DeliverPlan(in.ID)
 		if err != nil {

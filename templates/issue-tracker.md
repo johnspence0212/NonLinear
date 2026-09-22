@@ -51,7 +51,7 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. The UI can launch `/to-spec` and `/to-tickets` through the Cursor CLI. MCP lifecycle calls still do not fill the document.
+A **Project** (`P-{id}`) parents Decision Maps → Spec → Tickets. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. The UI can launch `/to-spec` and `/to-tickets` through the Cursor CLI. MCP lifecycle calls still do not fill the document.
 
 - **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`, optional `repo`), `update_project` (`id`, optional `title` / `destination` / `repo`). `repo` is the folder Cursor uses for that Project; empty falls back to the server default. Creating a map does not create a Project.
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
@@ -61,8 +61,8 @@ A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan.
 - **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.
 - **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Fill the SPEC body via `/to-spec`, not the map.
 - **Approve spec**: `approve_spec` with the spec `id`.
-- **Create plan**: `create_plan` with an approved spec `id`. Draft plan; implementation tickets are children (`parentId` = plan id). Same `blockedBy` / claim / frontier rules as map tickets.
-- **Make the plan in one step**: `advance_to_plan` with a map or spec `id`. Creates that map's spec if needed, approves it, and creates a new plan. Do not attach tickets to another map's plan. Parent each implementation ticket to the returned plan id.
+- **Create tickets**: `create_plan` with an approved spec `id`. Draft Tickets list; implementation tickets are children (`parentId` = that id). Same `blockedBy` / claim / frontier rules as map tickets.
+- **Make Tickets in one step**: `advance_to_plan` with a map or spec `id`. Creates that map's spec if needed, approves it, and creates a new Tickets list. Do not attach tickets to another map's list. Parent each implementation ticket to the returned id.
 - **Activate / deliver**: `activate_plan` then `deliver_plan` with the plan `id`. Explicit complete; not inferred from zero open tickets.
 - **Route is clear**: `clear_route` with the map `id`. Does not create a spec.
 

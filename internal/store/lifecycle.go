@@ -538,10 +538,12 @@ func (s *Store) createPlanLocked(src model.Issue) (model.IssueView, error) {
 	s.db.NextID++
 	from := src.ID
 	title := strings.TrimPrefix(src.Title, "Spec: ")
+	title = strings.TrimPrefix(title, "Plan: ")
+	title = strings.TrimPrefix(title, "Tickets: ")
 	issue := model.Issue{
 		ID:                    id,
 		Identifier:            fmt.Sprintf("%s-%d", s.db.Prefix, id),
-		Title:                 "Plan: " + title,
+		Title:                 "Tickets: " + title,
 		Body:                  model.PlanSkeleton(),
 		State:                 model.StateOpen,
 		Labels:                []string{},

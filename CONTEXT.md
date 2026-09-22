@@ -4,7 +4,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 ## Glossary
 
-**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, and Implementation Plan. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
+**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, and Tickets. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
 
 **Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`). A Project can have several maps.
 
@@ -12,7 +12,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Spec** — an issue with `kind=spec`, derived from a map (`derivedFromArtifactId`). Lifecycle: `draft` → `approved` (or `superseded`). Open at `#/spec/{id}`.
 
-**Plan** — an issue with `kind=plan`, derived from an approved spec. Lifecycle: `draft` → `active` → `delivered`. Implementation tickets are children of the plan. Open at `#/plan/{id}`.
+**Tickets** — an issue with `kind=plan`, derived from an approved spec. Lifecycle: `draft` → `active` → `delivered`. Implementation tickets are children of this list. Open at `#/plan/{id}`. The UI calls this Tickets; **to tickets** creates it and runs `/to-tickets`.
 
 **Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`.
 
@@ -32,12 +32,12 @@ A map with no `projectId` stays off every Project. Creating a map does not inven
 
 Explicit. Not inferred from “zero open tickets”. MCP lifecycle actions do not run skills or fabricate a completed document.
 
-The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `agent models` and stores the chosen one. A Project can set an optional `repo` (the folder Cursor uses for that project). Otherwise the git root of the directory NonLinear was started in is the default. The footer shows the repo in play. **to spec** on a map creates that map's spec if needed, then runs `/to-spec` on the spec. **to plan** creates that map's spec/plan if needed, then runs `/to-tickets` on the plan so tickets parent to the plan. **approve spec** approves, creates the plan, then runs `/to-tickets` on the plan. An open unblocked ticket can be **sent to cursor**.
+The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `agent models` and stores the chosen one. A Project can set an optional `repo` (the folder Cursor uses for that project). Otherwise the git root of the directory NonLinear was started in is the default. The footer shows the repo in play. **to spec** on a map creates that map's spec if needed, then runs `/to-spec` on the spec. **to tickets** creates that map's spec and Tickets list if needed, then runs `/to-tickets` so tickets parent to that list. **approve spec** approves, creates Tickets, then runs `/to-tickets`. An open unblocked ticket can be **sent to cursor**.
 
 1. Map **ready for spec** → map `ready_for_spec`
 2. **Create spec** → draft spec, empty to-spec skeleton, destination copied from the map if present
 3. **Approve spec** → spec `approved`
-4. **Create implementation plan** (approved spec only) → draft plan
+4. **Create tickets** (approved spec only) → draft Tickets list (`kind=plan`)
 5. **Start implementation** / **mark delivered** → plan `active` / `delivered`
 6. Map **route is clear** → map `cleared` (does not invent a spec)
 7. **Move to project** → set `projectId` on an issue and descendants, or on every issue currently on a source Project

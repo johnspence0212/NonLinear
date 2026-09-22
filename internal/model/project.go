@@ -125,7 +125,7 @@ func SpecSkeleton(destination string) string {
 }
 
 func PlanSkeleton() string {
-	return "## Implementation Plan\n\nTickets go on this plan as children. Fill this document via the /to-tickets skill handoff.\n\n## Sequence\n\n## Notes\n"
+	return "## Tickets\n\nTickets go here as children. Fill this document via the /to-tickets skill handoff.\n\n## Sequence\n\n## Notes\n"
 }
 
 func ProjectDestination(project Project, issues []Issue) string {
