@@ -266,17 +266,19 @@ func (h *Handler) update(w http.ResponseWriter, r *http.Request) {
 		ParentID    *int      `json:"parentId"`
 		ClearParent bool      `json:"clearParent"`
 		Project     *string   `json:"project"`
+		Lifecycle   *string   `json:"lifecycle"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
 	in := store.UpdateIssue{
-		Title:    body.Title,
-		Body:     body.Body,
-		Labels:   body.Labels,
-		State:    body.State,
-		Assignee: body.Assignee,
-		Project:  body.Project,
+		Title:     body.Title,
+		Body:      body.Body,
+		Labels:    body.Labels,
+		State:     body.State,
+		Assignee:  body.Assignee,
+		Project:   body.Project,
+		Lifecycle: body.Lifecycle,
 	}
 	if body.ClearParent {
 		var none *int

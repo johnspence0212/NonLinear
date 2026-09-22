@@ -102,7 +102,7 @@ The map UI shows children as a tree: `*` frontier, `.` blocked, `@` claimed, `x`
 
 ## Project lifecycle
 
-A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Creating a map does not create a Project — pass `projectId` or use `move_to_project`. Stage is derived from those artifacts; tags stay classification-only. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
+A **Project** (`P-{id}`) is a grouping for Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project; optional `linkedMaps` edges do not group them. Creating a map does not create a Project — pass `projectId` or use `move_to_project`. A Project has no tags. Readiness (`ready_for_spec`, `ready_for_tickets`) lives on the map and is editable. Stage is still derived for agents; tags stay classification-only on issues. Existing `db.json` files load unchanged (`schemaVersion` missing/`0`). The first save writes `schemaVersion: 1`. Maps still open at `#/map/{id}`. Project view is `#/project/{id}`. Specs and plans are `#/spec/{id}` and `#/plan/{id}`.
 
 | Move | MCP tool |
 | --- | --- |
@@ -110,7 +110,8 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementat
 | Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
-| Map ready for spec | `ready_for_spec` |
+| Map ready for spec | `ready_for_spec`, or `update_issue` `lifecycle` |
+| Adjust map readiness | `update_issue` with `lifecycle`: `active`, `ready_for_spec`, `ready_for_tickets`, `cleared`, `archived` |
 | Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
 | Make the spec in one step (ready + draft spec) | `advance_to_spec` |
 | Approve spec | `approve_spec` |
@@ -131,12 +132,12 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | View | Shows |
 | --- | --- |
 | `home` | Stats strip, then collapsible **projects**, **maps**, and **frontier** (open/unclaimed tickets grouped by map) |
-| `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
+| `projects` | Every Project (identifier `P-{id}`, destination). A Project is a grouping. Compose creates a Project. Open `#/project/{id}` |
 | `maps` | Wayfinder maps only (with a new-map box and import) |
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
 | `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
 | `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
-| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
+| `#/project/{id}` | Project destination, optional repo, Decision Maps / Spec / Plan rows; compose another map onto this Project. Readiness is on each map. |
 | `#/spec/{id}` | Spec body, approve, create implementation plan |
 | `#/plan/{id}` | Plan body plus ticket list / compose / blockers (same as a map's tickets) |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |

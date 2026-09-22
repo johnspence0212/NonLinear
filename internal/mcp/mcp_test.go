@@ -637,6 +637,45 @@ func TestMCPProjectRepo(t *testing.T) {
 	}
 }
 
+func TestMCPUpdateMapLifecycle(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_issue",
+		Arguments: map[string]any{"title": "Map", "labels": []string{"wayfinder:map"}},
+	})
+	if err != nil || created.IsError {
+		t.Fatalf("create: %v %v", err, created)
+	}
+	id := int(toolJSON(t, created)["id"].(float64))
+	updated, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "update_issue",
+		Arguments: map[string]any{"id": id, "lifecycle": "ready_for_tickets"},
+	})
+	if err != nil || updated.IsError {
+		t.Fatalf("update: %v %v", err, updated)
+	}
+	if toolJSON(t, updated)["lifecycle"] != "ready_for_tickets" {
+		t.Fatalf("lifecycle: %v", toolJSON(t, updated))
+	}
+}
+
 func toolJSON(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(res.StructuredContent)

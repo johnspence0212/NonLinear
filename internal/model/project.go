@@ -16,11 +16,21 @@ const (
 )
 
 const (
-	MapLifecycleActive       = "active"
-	MapLifecycleReadyForSpec = "ready_for_spec"
-	MapLifecycleCleared      = "cleared"
-	MapLifecycleArchived     = "archived"
+	MapLifecycleActive          = "active"
+	MapLifecycleReadyForSpec    = "ready_for_spec"
+	MapLifecycleReadyForTickets = "ready_for_tickets"
+	MapLifecycleCleared         = "cleared"
+	MapLifecycleArchived        = "archived"
 )
+
+func ValidMapLifecycle(s string) bool {
+	switch s {
+	case MapLifecycleActive, MapLifecycleReadyForSpec, MapLifecycleReadyForTickets, MapLifecycleCleared, MapLifecycleArchived:
+		return true
+	default:
+		return false
+	}
+}
 
 const (
 	SpecLifecycleDraft      = "draft"
@@ -149,6 +159,7 @@ func DeriveStage(issues []Issue) string {
 	hasPlanActive := false
 	hasPlanDelivered := false
 	hasMapReady := false
+	hasMapReadyForTickets := false
 	for _, issue := range issues {
 		switch {
 		case IsPlan(issue):
@@ -167,7 +178,10 @@ func DeriveStage(issues []Issue) string {
 				hasSpecApproved = true
 			}
 		case IsMap(issue):
-			if issue.Lifecycle == MapLifecycleReadyForSpec {
+			switch issue.Lifecycle {
+			case MapLifecycleReadyForTickets:
+				hasMapReadyForTickets = true
+			case MapLifecycleReadyForSpec:
 				hasMapReady = true
 			}
 		}
@@ -177,7 +191,7 @@ func DeriveStage(issues []Issue) string {
 		return StageComplete
 	case hasPlanActive:
 		return StageImplementing
-	case hasSpecApproved:
+	case hasSpecApproved || hasMapReadyForTickets:
 		return StageReadyForTickets
 	case hasSpecDraft:
 		return StageSpecReview

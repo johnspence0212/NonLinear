@@ -267,6 +267,41 @@ func TestUpdateMapLabels(t *testing.T) {
 	}
 }
 
+func TestUpdateMapLifecycle(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	life := model.MapLifecycleReadyForTickets
+	got, err := s.Update(m.ID, UpdateIssue{Lifecycle: &life})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Lifecycle != model.MapLifecycleReadyForTickets {
+		t.Fatalf("lifecycle: %s", got.Lifecycle)
+	}
+	back := model.MapLifecycleReadyForSpec
+	got, err = s.Update(m.ID, UpdateIssue{Lifecycle: &back})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Lifecycle != model.MapLifecycleReadyForSpec {
+		t.Fatalf("lifecycle: %s", got.Lifecycle)
+	}
+	ticket, err := s.Create(CreateIssue{Title: "Ticket", ParentID: &m.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(ticket.ID, UpdateIssue{Lifecycle: &life}); err == nil {
+		t.Fatal("expected ticket lifecycle error")
+	}
+	bad := "nope"
+	if _, err := s.Update(m.ID, UpdateIssue{Lifecycle: &bad}); err == nil {
+		t.Fatal("expected unknown lifecycle error")
+	}
+}
+
 func TestUpdateComment(t *testing.T) {
 	s := testStore(t)
 	issue, err := s.Create(CreateIssue{Title: "Ticket"})
