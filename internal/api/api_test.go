@@ -303,6 +303,55 @@ func TestCreateMapOnProjectHTTP(t *testing.T) {
 	}
 }
 
+func TestSecondMapDoesNotInheritSpecHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	p := postJSON(t, mux, "/api/projects", map[string]any{
+		"title":       "Idle Frontier",
+		"destination": "Project destination",
+	})
+	first := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "First session",
+		"labels":    []string{"wayfinder:map"},
+		"body":      "## Destination\n\nFirst map dest.\n",
+		"projectId": p["id"],
+	})
+	spec := postJSON(t, mux, "/api/issues/"+itoa(first["id"])+"/advance-to-spec", map[string]any{})
+	if spec["kind"] != "spec" {
+		t.Fatalf("spec: %v", spec)
+	}
+	second := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "Second session",
+		"labels":    []string{"wayfinder:map"},
+		"projectId": p["id"],
+	})
+	if second["derivedFromArtifactId"] != nil {
+		t.Fatalf("new map inherited derivedFrom: %v", second)
+	}
+	if derived, ok := second["derived"].([]any); ok && len(derived) != 0 {
+		t.Fatalf("new map inherited derived: %v", second["derived"])
+	}
+	gotFirst := getJSON(t, mux, "/api/issues/"+itoa(first["id"]))
+	derived, _ := gotFirst["derived"].([]any)
+	if len(derived) != 1 {
+		t.Fatalf("first map derived: %v", gotFirst["derived"])
+	}
+	own := postJSON(t, mux, "/api/issues/"+itoa(second["id"])+"/advance-to-spec", map[string]any{})
+	if own["kind"] != "spec" || own["derivedFromArtifactId"] != second["id"] {
+		t.Fatalf("second spec: %v", own)
+	}
+	got := getJSON(t, mux, "/api/projects/"+itoa(p["id"]))
+	specs, _ := got["specs"].([]any)
+	if len(specs) != 2 {
+		t.Fatalf("project specs: %v", got["specs"])
+	}
+}
+
 func TestProjectLifecycle(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

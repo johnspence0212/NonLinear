@@ -75,6 +75,16 @@ function isArtifact(issue) {
   return isMap(issue) || isSpec(issue) || isPlan(issue);
 }
 
+function derivedFrom(issue, sourceId) {
+  return !!(issue && issue.derivedFrom && issue.derivedFrom.id === sourceId);
+}
+
+function ownArtifacts(projectItems, issue, kind) {
+  const fromProject = (projectItems || []).filter((item) => derivedFrom(item, issue.id));
+  if (fromProject.length) return fromProject;
+  return (issue.derived || []).filter((item) => !kind || item.kind === kind);
+}
+
 function hrefFor(issue) {
   if (isMap(issue)) return `#/map/${issue.id}`;
   if (isSpec(issue)) return `#/spec/${issue.id}`;
@@ -874,7 +884,7 @@ async function renderMap(id) {
       ? "nothing on the frontier — blocked and claimed tickets are under open"
       : "no tickets on this map";
   const kids = (map.children || []).filter((c) => !isArtifact(c));
-  const specs = project ? project.specs || [] : [];
+  const specs = ownArtifacts(project && project.specs, map, "spec");
   const hasSpec = specs.length > 0;
   const life = map.lifecycle || "active";
   const actions = [
@@ -1090,7 +1100,7 @@ async function renderSpec(id) {
   }
   setViewRepo((project && project.repo) || (issue.projectRef && issue.projectRef.repo));
   state.issueBackHref = issue.projectRef ? `#/project/${issue.projectRef.id}` : "#/";
-  const plans = project ? project.plans || [] : [];
+  const plans = ownArtifacts(project && project.plans, issue, "plan");
   const hasPlan = plans.length > 0;
   const actions = [
     issue.lifecycle === "draft" ? `<button data-act="approve">approve spec</button>` : "",

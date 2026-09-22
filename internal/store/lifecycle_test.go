@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/model"
@@ -439,6 +440,89 @@ func TestCreateMapOnExistingProject(t *testing.T) {
 	}
 	if _, err := s.Create(CreateIssue{Title: "Missing project", Labels: []string{"wayfinder:map"}, ProjectID: intPtr(999)}); err == nil {
 		t.Fatal("expected missing project")
+	}
+}
+
+func TestSecondMapDoesNotInheritSpec(t *testing.T) {
+	s := testStore(t)
+	p, err := s.CreateProject(CreateProject{Title: "Idle Frontier", Destination: "Project destination"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Create(CreateIssue{
+		Title:     "First session",
+		Labels:    []string{"wayfinder:map"},
+		Body:      "## Destination\n\nFirst map dest.\n",
+		ProjectID: &p.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	spec, err := s.AdvanceToSpec(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := s.Create(CreateIssue{
+		Title:     "Second session",
+		Labels:    []string{"wayfinder:map"},
+		ProjectID: &p.ID,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.DerivedFromArtifactID != nil {
+		t.Fatalf("new map inherited derivedFrom %v", second.DerivedFromArtifactID)
+	}
+	if len(second.Derived) != 0 {
+		t.Fatalf("new map inherited derived artifacts: %+v", second.Derived)
+	}
+	gotFirst, err := s.Get(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotFirst.Derived) != 1 || gotFirst.Derived[0].ID != spec.ID {
+		t.Fatalf("first map derived: %+v", gotFirst.Derived)
+	}
+	proj, err := s.GetProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proj.Specs) != 1 || proj.Specs[0].ID != spec.ID {
+		t.Fatalf("project specs: %+v", ids(proj.Specs))
+	}
+	if spec.DerivedFromArtifactID == nil || *spec.DerivedFromArtifactID != first.ID {
+		t.Fatalf("spec should stay derived from first map: %+v", spec.DerivedFromArtifactID)
+	}
+	if !strings.Contains(spec.Body, "First map dest.") {
+		t.Fatalf("spec should copy destination from its map, got %q", spec.Body)
+	}
+	if strings.Contains(spec.Body, "Project destination") {
+		t.Fatalf("spec inherited project destination: %q", spec.Body)
+	}
+
+	own, err := s.AdvanceToSpec(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.DerivedFromArtifactID == nil || *own.DerivedFromArtifactID != second.ID {
+		t.Fatalf("second spec derivedFrom: %+v", own.DerivedFromArtifactID)
+	}
+	if strings.Contains(own.Body, "First map dest.") || strings.Contains(own.Body, "Project destination") {
+		t.Fatalf("second spec inherited destination: %q", own.Body)
+	}
+	gotSecond, err := s.Get(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotSecond.Derived) != 1 || gotSecond.Derived[0].ID != own.ID {
+		t.Fatalf("second map derived: %+v", gotSecond.Derived)
+	}
+	proj, err = s.GetProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(proj.Specs) != 2 {
+		t.Fatalf("project specs after second: %+v", ids(proj.Specs))
 	}
 }
 

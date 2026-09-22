@@ -388,11 +388,6 @@ func (s *Store) createSpecLocked(src model.Issue) (model.IssueView, error) {
 		return model.IssueView{}, fmt.Errorf("%w: spec already exists (%s)", ErrInvalid, existing.Identifier)
 	}
 	dest := model.ExtractDestination(src.Body)
-	if src.ProjectID != nil {
-		if p := s.findProjectLocked(*src.ProjectID); p != nil && strings.TrimSpace(p.Destination) != "" {
-			dest = p.Destination
-		}
-	}
 	now := time.Now().UTC()
 	id := s.db.NextID
 	s.db.NextID++

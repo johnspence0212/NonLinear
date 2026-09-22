@@ -65,6 +65,7 @@ type IssueView struct {
 	Linked       []IssueSummary  `json:"linked,omitempty"`
 	Parent       *IssueSummary   `json:"parent,omitempty"`
 	DerivedFrom  *IssueSummary   `json:"derivedFrom,omitempty"`
+	Derived      []IssueSummary  `json:"derived,omitempty"`
 	ProjectRef   *ProjectSummary `json:"projectRef,omitempty"`
 }
 
@@ -193,6 +194,10 @@ func Summarize(issue Issue, byID map[int]Issue) IssueSummary {
 	}
 }
 
+func isSupersededSpec(issue Issue) bool {
+	return IsSpec(issue) && issue.Lifecycle == SpecLifecycleSuperseded
+}
+
 func View(issue Issue, byID map[int]Issue) IssueView {
 	v := IssueView{
 		Issue:        CloneIssue(issue),
@@ -203,6 +208,7 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		Blockers:     []IssueSummary{},
 		Blocks:       []IssueSummary{},
 		Linked:       []IssueSummary{},
+		Derived:      []IssueSummary{},
 	}
 	if issue.ParentID != nil {
 		if parent, ok := byID[*issue.ParentID]; ok {
@@ -220,6 +226,9 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		if other.ParentID != nil && *other.ParentID == issue.ID && !IsMap(other) {
 			v.Children = append(v.Children, Summarize(other, byID))
 		}
+		if other.DerivedFromArtifactID != nil && *other.DerivedFromArtifactID == issue.ID && !isSupersededSpec(other) {
+			v.Derived = append(v.Derived, Summarize(other, byID))
+		}
 		for _, bid := range other.BlockedBy {
 			if bid == issue.ID {
 				v.Blocks = append(v.Blocks, Summarize(other, byID))
@@ -228,6 +237,7 @@ func View(issue Issue, byID map[int]Issue) IssueView {
 		}
 	}
 	sort.Slice(v.Children, func(i, j int) bool { return v.Children[i].ID < v.Children[j].ID })
+	sort.Slice(v.Derived, func(i, j int) bool { return v.Derived[i].ID < v.Derived[j].ID })
 	sort.Slice(v.Blocks, func(i, j int) bool { return v.Blocks[i].ID < v.Blocks[j].ID })
 	for _, id := range issue.BlockedBy {
 		if blocker, ok := byID[id]; ok {
