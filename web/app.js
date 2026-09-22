@@ -202,6 +202,15 @@ function setBusy(msg) {
   main.insertAdjacentHTML("afterbegin", busyLine(state.busy));
 }
 
+function armBusyButton(kind, msg) {
+  const btn = main.querySelector(`[data-act="${kind}"]`);
+  if (btn) {
+    btn.innerHTML = `<span class="spin" aria-hidden="true"></span>${esc(msg)}`;
+    btn.classList.add("is-waiting");
+  }
+  setBusy(msg);
+}
+
 function showSettingsLoading() {
   if (main.querySelector(".settings-meta")) {
     setBusy("asking the cursor cli…");
@@ -1513,7 +1522,7 @@ async function act(issue, kind) {
       await api(`/api/issues/${issue.id}/clear-route`, { method: "POST", body: "{}" });
     }
     if (kind === "approve") {
-      setBusy("approving…");
+      armBusyButton("approve", "approving…");
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
       try {
         await sendCursor("to-tickets", issue.id);
@@ -1525,6 +1534,12 @@ async function act(issue, kind) {
     }
     if (kind === "to-spec" || kind === "to-plan" || kind === "send-cursor") {
       const action = kind === "send-cursor" ? "issue" : kind;
+      const wait = {
+        issue: "sending to cursor…",
+        "to-spec": "starting to spec…",
+        "to-plan": "starting to plan…",
+      };
+      armBusyButton(kind, wait[action] || "talking to cursor…");
       await sendCursor(action, issue.id);
       await paint();
       return;

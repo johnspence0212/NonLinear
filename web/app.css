@@ -463,6 +463,13 @@ body.is-busy #cursor-settings button {
   opacity: 0.45;
   pointer-events: none;
 }
+body.is-busy .actions button.is-waiting {
+  opacity: 1;
+  color: var(--accent);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 textarea {
   width: 100%;
   min-height: 120px;
