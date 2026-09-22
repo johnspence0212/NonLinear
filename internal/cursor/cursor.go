@@ -171,9 +171,9 @@ func (s *Service) Run(ctx context.Context, action string, issue model.IssueView)
 	if err != nil {
 		return RunResult{}, err
 	}
-	dir := s.workspace()
-	if dir == "" {
-		return RunResult{}, fmt.Errorf("%w: could not find the repo", ErrInvalid)
+	dir, err := s.workspaceFor(issue)
+	if err != nil {
+		return RunResult{}, err
 	}
 	bin, err := s.lookPath("agent")
 	if err != nil {
@@ -257,6 +257,27 @@ func agentArgs(model, prompt string, print bool) []string {
 	}
 	args = append(args, prompt)
 	return args
+}
+
+func (s *Service) DefaultWorkspace() string {
+	return s.workspace()
+}
+
+func (s *Service) workspaceFor(issue model.IssueView) (string, error) {
+	if issue.ProjectRef != nil {
+		if repo := strings.TrimSpace(issue.ProjectRef.Repo); repo != "" {
+			info, err := os.Stat(repo)
+			if err != nil || !info.IsDir() {
+				return "", fmt.Errorf("%w: project repo is not a directory", ErrInvalid)
+			}
+			return repo, nil
+		}
+	}
+	dir := s.workspace()
+	if dir == "" {
+		return "", fmt.Errorf("%w: could not find the repo", ErrInvalid)
+	}
+	return dir, nil
 }
 
 func (s *Service) workspace() string {

@@ -10,6 +10,8 @@ const state = {
   labels: [],
   version: "",
   dataPath: "",
+  defaultRepo: "",
+  viewRepo: "",
   issueBackHref: "#/",
 };
 
@@ -211,7 +213,8 @@ function composeBar(label, formId = "compose", kind = "issue") {
   const fields =
     kind === "project"
       ? `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
-        <label class="edit-label">destination<textarea name="destination" placeholder="optional"></textarea></label>`
+        <label class="edit-label">destination<textarea name="destination" placeholder="optional product writeup"></textarea></label>
+        <label class="edit-label">repo<input name="repo" placeholder="optional folder for cursor" autocomplete="off" /></label>`
       : `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
         <label class="edit-label">body${mdEditorHTML(formId + "-md", "markdown body")}</label>`;
   return `<div class="compose" data-compose-root="${esc(formId)}">
@@ -253,6 +256,7 @@ function bindCompose(extra, formId = "compose") {
           body: JSON.stringify({
             title,
             destination: form.querySelector("[name=destination]")?.value || "",
+            repo: form.querySelector("[name=repo]")?.value || "",
           }),
         });
         location.hash = `#/project/${created.id}`;
@@ -276,6 +280,19 @@ function bindProjectCompose(formId = "compose") {
   bindCompose({ _project: true }, formId);
 }
 
+function setViewRepo(repo) {
+  state.viewRepo = String(repo || "").trim();
+}
+
+function syncFootRepo() {
+  const el = $("#foot-repo");
+  if (!el) return;
+  const repo = state.viewRepo || state.defaultRepo || "";
+  el.hidden = !repo;
+  el.textContent = repo;
+  el.title = repo;
+}
+
 async function refreshStats() {
   const [allData, labelData, health, projectData] = await Promise.all([
     api("/api/issues"),
@@ -285,6 +302,7 @@ async function refreshStats() {
   ]);
   state.version = health.version || "";
   state.dataPath = health.data || "";
+  state.defaultRepo = health.workspace || "";
   const ver = $("#version");
   if (ver) ver.textContent = state.version ? "v" + state.version : "";
   const all = allData.issues || [];
@@ -753,6 +771,7 @@ function renderNav() {
 }
 
 function syncChrome() {
+  syncFootRepo();
   const r = route();
   renderNav();
   document.querySelectorAll("nav [data-filter]").forEach((b) => {
@@ -783,6 +802,7 @@ async function renderMap(id) {
     main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
     return;
   }
+  setViewRepo((project && project.repo) || (map.projectRef && map.projectRef.repo));
   const filters = ["open", "frontier", "closed", "all"]
     .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
     .join("");
@@ -895,7 +915,9 @@ async function renderProject(id) {
     main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
     return;
   }
+  setViewRepo(project.repo);
   const dest = project.destination || "";
+  const repo = project.repo || "";
   const others = (state.projects || []).filter((p) => p.id !== project.id);
   const moveOpts = others
     .map((p) => `<option value="${p.id}">${esc(p.identifier)} ${esc(p.title)}</option>`)
@@ -904,13 +926,14 @@ async function renderProject(id) {
     ? `<select data-move-to>${moveOpts}</select><button type="button" data-act="move">move all to…</button>`
     : "";
   main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
+    ${flash()}
     ${box(
       `<strong>${esc(project.identifier)}</strong>${stamp(project.stage || "wayfinding", "open lg")}`,
-      `<div class="box-b pad">
+      `<div class="box-b pad" id="project-head">
         <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
-        <div class="actions">${move}<button type="button" data-act="delete" class="danger">delete project</button></div>
+        <p class="muted">${repo ? `repo ${esc(repo)}` : "no repo — send to cursor uses the server default"}</p>
+        <div class="actions">${move}<button type="button" data-act="edit">edit</button><button type="button" data-act="delete" class="danger">delete project</button></div>
       </div>`
     )}
     ${box(
@@ -931,12 +954,17 @@ async function renderProject(id) {
       "<strong>this project</strong>",
       railLines([
         ["stage", project.stage || ""],
+        ["repo", repo || "server default"],
         ["maps", (project.maps || []).length],
         ["specs", (project.specs || []).length],
         ["plans", (project.plans || []).length],
       ])
     )
   );
+  const edit = main.querySelector("[data-act=edit]");
+  if (edit) {
+    edit.addEventListener("click", () => startProjectEdit(project));
+  }
   const del = main.querySelector("[data-act=delete]");
   if (del) {
     del.addEventListener("click", async () => {
@@ -1001,6 +1029,7 @@ async function renderSpec(id) {
     location.replace(hrefFor(issue));
     return;
   }
+  setViewRepo((project && project.repo) || (issue.projectRef && issue.projectRef.repo));
   state.issueBackHref = issue.projectRef ? `#/project/${issue.projectRef.id}` : "#/";
   const plans = project ? project.plans || [] : [];
   const hasPlan = plans.length > 0;
@@ -1051,6 +1080,7 @@ async function renderPlan(id) {
     location.replace(hrefFor(issue));
     return;
   }
+  setViewRepo(issue.projectRef && issue.projectRef.repo);
   state.issueBackHref = issue.projectRef ? `#/project/${issue.projectRef.id}` : "#/";
   const filters = ["open", "frontier", "closed", "all"]
     .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
@@ -1235,6 +1265,7 @@ async function renderIssue(id) {
     location.replace(`#/plan/${issue.id}`);
     return;
   }
+  setViewRepo(issue.projectRef && issue.projectRef.repo);
   state.issueBackHref = backHref(issue);
   const closed = issue.state === "closed";
   const comments = (issue.comments || []).map(commentHTML).join("");
@@ -1349,6 +1380,44 @@ function startInlineEdit(issue) {
   bindEditForm(issue);
 }
 
+function startProjectEdit(project) {
+  const head = main.querySelector("#project-head");
+  if (!head) return;
+  head.innerHTML = `<label class="edit-label">title<input id="edit-title" value="${esc(project.title).replaceAll('"', "&quot;")}" /></label>
+  <label class="edit-label">destination<textarea id="edit-destination">${esc(project.destination || "")}</textarea></label>
+  <label class="edit-label">repo<input id="edit-repo" value="${esc(project.repo || "").replaceAll('"', "&quot;")}" placeholder="folder for cursor" autocomplete="off" /></label>
+  <div class="actions"><button type="button" data-save>save</button><button type="button" data-cancel>cancel</button></div>`;
+  const save = head.querySelector("[data-save]");
+  const cancel = head.querySelector("[data-cancel]");
+  cancel.addEventListener("click", () => renderProject(project.id));
+  save.addEventListener("click", async () => {
+    const title = head.querySelector("#edit-title").value.trim();
+    if (!title) return;
+    try {
+      await api("/api/projects/" + project.id, {
+        method: "PATCH",
+        body: JSON.stringify({
+          title,
+          destination: head.querySelector("#edit-destination").value,
+          repo: head.querySelector("#edit-repo").value,
+        }),
+      });
+      state.error = "";
+      state.notice = "saved project";
+      await renderProject(project.id);
+    } catch (err) {
+      state.error = err.message;
+      main.querySelector(".error")?.remove();
+      main.insertAdjacentHTML("afterbegin", `<div class="error">${esc(err.message)}</div>`);
+    }
+  });
+  const t = head.querySelector("#edit-title");
+  if (t) {
+    t.focus();
+    t.select();
+  }
+}
+
 function slugTitle(title) {
   return String(title || "")
     .toLowerCase()
@@ -1449,6 +1518,7 @@ async function act(issue, kind) {
 }
 
 async function paint() {
+  state.viewRepo = "";
   try {
     await refreshStats();
   } catch (err) {
@@ -1586,13 +1656,13 @@ async function renderSettings() {
         <div class="rail-line">maps <b>${s.maps}</b></div>
         <div class="rail-line">data <b>${esc(state.dataPath)}</b></div>
         <div class="rail-line">cursor cli <b>${cli}</b></div>
-        <div class="rail-line">repo <b>${esc(cursor.workspace || "")}</b></div>
+        <div class="rail-line">default repo <b>${esc(cursor.workspace || "")}</b></div>
       </div>
       ${modelField ? `<form id="cursor-settings" class="pad">
         <label class="edit-label">model${modelField}</label>
         <div class="actions"><button type="submit">save model</button></div>
       </form>` : ""}
-      <p class="muted">models come from the cursor cli. repo is the directory nonlinear was started in.</p>
+      <p class="muted">models come from the cursor cli. default repo is where nonlinear was started. a project can set its own.</p>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
       <div class="actions">
         <button type="button" data-import-map>import map</button>

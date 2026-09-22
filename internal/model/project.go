@@ -48,6 +48,7 @@ type Project struct {
 	Identifier  string    `json:"identifier"`
 	Title       string    `json:"title"`
 	Destination string    `json:"destination,omitempty"`
+	Repo        string    `json:"repo,omitempty"`
 	CreatedAt   time.Time `json:"createdAt"`
 	UpdatedAt   time.Time `json:"updatedAt"`
 }
@@ -58,6 +59,7 @@ type ProjectSummary struct {
 	Title       string `json:"title"`
 	Stage       string `json:"stage"`
 	Destination string `json:"destination,omitempty"`
+	Repo        string `json:"repo,omitempty"`
 }
 
 type ProjectView struct {

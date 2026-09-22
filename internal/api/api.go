@@ -27,6 +27,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects", h.createProject)
 	mux.HandleFunc("POST /api/projects/move", h.moveToProject)
 	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
+	mux.HandleFunc("PATCH /api/projects/{id}", h.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
 	mux.HandleFunc("GET /api/issues", h.list)
 	mux.HandleFunc("POST /api/issues", h.create)
@@ -113,11 +114,16 @@ func writeCursorError(w http.ResponseWriter, err error) {
 }
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {
+	workspace := ""
+	if svc := h.cursorSvc(); svc != nil {
+		workspace = svc.DefaultWorkspace()
+	}
 	writeJSON(w, http.StatusOK, map[string]any{
-		"ok":      true,
-		"version": version.Version,
-		"data":    h.Store.Path(),
-		"issues":  h.Store.Count(),
+		"ok":        true,
+		"version":   version.Version,
+		"data":      h.Store.Path(),
+		"issues":    h.Store.Count(),
+		"workspace": workspace,
 	})
 }
 
@@ -482,16 +488,38 @@ func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {
 	var body struct {
 		Title       string `json:"title"`
 		Destination string `json:"destination"`
+		Repo        string `json:"repo"`
 	}
 	if !decode(w, r, &body) {
 		return
 	}
-	project, err := h.Store.CreateProject(store.CreateProject{Title: body.Title, Destination: body.Destination})
+	project, err := h.Store.CreateProject(store.CreateProject{Title: body.Title, Destination: body.Destination, Repo: body.Repo})
 	if err != nil {
 		writeStoreError(w, err)
 		return
 	}
 	writeJSON(w, http.StatusCreated, project)
+}
+
+func (h *Handler) updateProject(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Title       *string `json:"title"`
+		Destination *string `json:"destination"`
+		Repo        *string `json:"repo"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	project, err := h.Store.UpdateProject(id, store.UpdateProject{Title: body.Title, Destination: body.Destination, Repo: body.Repo})
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, project)
 }
 
 func (h *Handler) moveToProject(w http.ResponseWriter, r *http.Request) {

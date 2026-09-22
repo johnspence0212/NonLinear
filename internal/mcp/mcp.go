@@ -255,7 +255,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project",
-		Description: "Fetch one Project by id. Returns destination, derived stage, and Decision Map / Spec / Plan summaries.",
+		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, and Decision Map / Spec / Plan summaries.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.GetProject(in.ID)
 		if err != nil {
@@ -266,9 +266,20 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_project",
-		Description: "Create a Project parent. Creating a map does not create a Project. Attach a map with create_issue projectId, or move_to_project.",
+		Description: "Create a Project parent. Creating a map does not create a Project. Attach a map with create_issue projectId, or move_to_project. Optional repo is the folder send-to-cursor uses for this Project.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, any, error) {
-		project, err := st.CreateProject(store.CreateProject{Title: in.Title, Destination: in.Destination})
+		project, err := st.CreateProject(store.CreateProject{Title: in.Title, Destination: in.Destination, Repo: in.Repo})
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(project)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "update_project",
+		Description: "Update a Project. Pass title, destination (the product writeup), and/or repo (folder Cursor uses). Empty repo clears it so send-to-cursor falls back to the server default.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateProjectInput) (*mcp.CallToolResult, any, error) {
+		project, err := st.UpdateProject(in.ID, store.UpdateProject{Title: in.Title, Destination: in.Destination, Repo: in.Repo})
 		if err != nil {
 			return errResult(err)
 		}
@@ -484,6 +495,14 @@ type projectIDInput struct {
 type createProjectInput struct {
 	Title       string `json:"title" jsonschema:"project title"`
 	Destination string `json:"destination,omitempty" jsonschema:"optional destination; otherwise taken from the map body"`
+	Repo        string `json:"repo,omitempty" jsonschema:"optional folder Cursor uses for this Project"`
+}
+
+type updateProjectInput struct {
+	ID          int     `json:"id" jsonschema:"project id"`
+	Title       *string `json:"title,omitempty" jsonschema:"new title"`
+	Destination *string `json:"destination,omitempty" jsonschema:"product writeup; empty clears"`
+	Repo        *string `json:"repo,omitempty" jsonschema:"folder Cursor uses; empty clears"`
 }
 
 type moveToProjectInput struct {

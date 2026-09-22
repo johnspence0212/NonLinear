@@ -134,6 +134,44 @@ func TestRunUsesSavedModelAndGitRoot(t *testing.T) {
 	}
 }
 
+func TestRunUsesProjectRepo(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	other := t.TempDir()
+	if err := os.Mkdir(filepath.Join(other, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	s := New(t.TempDir())
+	s.Getwd = func() (string, error) { return root, nil }
+	var cmd *exec.Cmd
+	s.LookPath = func(name string) (string, error) {
+		if name == "agent" {
+			return "/bin/agent", nil
+		}
+		return "", os.ErrNotExist
+	}
+	s.Command = func(name string, args ...string) *exec.Cmd {
+		cmd = exec.Command("true")
+		return cmd
+	}
+	issue := model.IssueView{
+		Issue:      model.Issue{ID: 3, Identifier: "NL-3", Title: "Ship it", State: model.StateOpen},
+		ProjectRef: &model.ProjectSummary{ID: 1, Identifier: "P-1", Title: "Other", Repo: other},
+	}
+	res, err := s.Run(t.Context(), "issue", issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Workspace != other {
+		t.Fatalf("workspace %s want %s", res.Workspace, other)
+	}
+	if cmd.Dir != other {
+		t.Fatalf("dir %s", cmd.Dir)
+	}
+}
+
 func TestRunOmitsModelFlagWhenUnset(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {

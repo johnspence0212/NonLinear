@@ -436,6 +436,22 @@ func TestCursorRunHTTP(t *testing.T) {
 	if status["workspace"] != root || fmt.Sprint(status["models"]) != "[composer-2 gpt-5.4]" {
 		t.Fatalf("status: %v", status)
 	}
+	other := t.TempDir()
+	if err := os.Mkdir(filepath.Join(other, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	proj := postJSON(t, mux, "/api/projects", map[string]any{"title": "Other tree", "repo": other})
+	if proj["repo"] != other {
+		t.Fatalf("project repo: %v", proj)
+	}
+	cleared := patchJSON(t, mux, "/api/projects/"+itoa(proj["id"]), map[string]any{"repo": ""})
+	if cleared["repo"] != nil && cleared["repo"] != "" {
+		t.Fatalf("cleared: %v", cleared)
+	}
+	restored := patchJSON(t, mux, "/api/projects/"+itoa(proj["id"]), map[string]any{"repo": other})
+	if restored["repo"] != other {
+		t.Fatalf("restored: %v", restored)
+	}
 	saved := putJSON(t, mux, "/api/cursor", map[string]any{"model": "gpt-5.4"})
 	if saved["model"] != "gpt-5.4" {
 		t.Fatalf("saved: %v", saved)
@@ -476,6 +492,20 @@ func TestCursorRunHTTP(t *testing.T) {
 	planned := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "to-plan", "id": parent["id"]})
 	if planned["prompt"] != "/to-tickets #"+parent["identifier"].(string) {
 		t.Fatalf("to-plan: %v", planned)
+	}
+
+	onProj := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "Project map",
+		"labels":    []string{"wayfinder:map"},
+		"projectId": proj["id"],
+	})
+	ticket := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "Work the other tree",
+		"parentId": onProj["id"],
+	})
+	otherSent := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "issue", "id": ticket["id"]})
+	if otherSent["workspace"] != other {
+		t.Fatalf("project workspace: %v", otherSent)
 	}
 }
 

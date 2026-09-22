@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -587,6 +588,52 @@ func TestMCPMoveAndDeleteProject(t *testing.T) {
 	})
 	if err != nil || gone.IsError {
 		t.Fatalf("delete: %v %v", err, gone)
+	}
+}
+
+func TestMCPProjectRepo(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Other tree", "repo": root},
+	})
+	if err != nil || created.IsError {
+		t.Fatalf("create: %v %v", err, created)
+	}
+	got := toolJSON(t, created)
+	if got["repo"] != root {
+		t.Fatalf("repo: %v", got)
+	}
+	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "update_project",
+		Arguments: map[string]any{"id": got["id"], "repo": ""},
+	})
+	if err != nil || cleared.IsError {
+		t.Fatalf("update: %v %v", err, cleared)
+	}
+	if repo := toolJSON(t, cleared)["repo"]; repo != nil && repo != "" {
+		t.Fatalf("cleared: %v", toolJSON(t, cleared))
 	}
 }
 

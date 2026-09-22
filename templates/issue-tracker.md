@@ -53,7 +53,7 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. The UI can launch `/to-spec` and `/to-tickets` through the Cursor CLI. MCP lifecycle calls still do not fill the document.
 
-- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`). Creating a map does not create a Project.
+- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`, optional `repo`), `update_project` (`id`, optional `title` / `destination` / `repo`). `repo` is the folder Cursor uses for that Project; empty falls back to the server default. Creating a map does not create a Project.
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
 - **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this to put a standalone map onto a Project.
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.

@@ -2,6 +2,8 @@ package store
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 	"time"
@@ -12,6 +14,13 @@ import (
 type CreateProject struct {
 	Title       string
 	Destination string
+	Repo        string
+}
+
+type UpdateProject struct {
+	Title       *string
+	Destination *string
+	Repo        *string
 }
 
 func (s *Store) viewLocked(issue model.Issue) model.IssueView {
@@ -29,6 +38,7 @@ func (s *Store) viewLocked(issue model.Issue) model.IssueView {
 		Title:       p.Title,
 		Stage:       model.DeriveStage(s.issuesForProjectLocked(p.ID)),
 		Destination: model.ProjectDestination(*p, s.db.Issues),
+		Repo:        p.Repo,
 	}
 	v.ProjectRef = &summary
 	return v
@@ -127,11 +137,16 @@ func (s *Store) CreateProject(in CreateProject) (model.ProjectView, error) {
 	now := time.Now().UTC()
 	id := s.db.NextProjectID
 	s.db.NextProjectID++
+	repo, err := resolveRepo(in.Repo)
+	if err != nil {
+		return model.ProjectView{}, err
+	}
 	p := model.Project{
 		ID:          id,
 		Identifier:  model.ProjectIdentifier(id),
 		Title:       title,
 		Destination: strings.TrimSpace(in.Destination),
+		Repo:        repo,
 		CreatedAt:   now,
 		UpdatedAt:   now,
 	}
@@ -140,6 +155,63 @@ func (s *Store) CreateProject(in CreateProject) (model.ProjectView, error) {
 		return model.ProjectView{}, err
 	}
 	return s.projectViewLocked(p), nil
+}
+
+func (s *Store) UpdateProject(id int, in UpdateProject) (model.ProjectView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.findProjectLocked(id)
+	if p == nil {
+		return model.ProjectView{}, fmt.Errorf("%w: project %d", ErrNotFound, id)
+	}
+	if in.Title != nil {
+		title := strings.TrimSpace(*in.Title)
+		if title == "" {
+			return model.ProjectView{}, fmt.Errorf("%w: title is required", ErrInvalid)
+		}
+		p.Title = title
+	}
+	if in.Destination != nil {
+		p.Destination = strings.TrimSpace(*in.Destination)
+	}
+	if in.Repo != nil {
+		repo, err := resolveRepo(*in.Repo)
+		if err != nil {
+			return model.ProjectView{}, err
+		}
+		p.Repo = repo
+	}
+	p.UpdatedAt = time.Now().UTC()
+	if err := s.saveLocked(); err != nil {
+		return model.ProjectView{}, err
+	}
+	return s.projectViewLocked(*p), nil
+}
+
+func resolveRepo(path string) (string, error) {
+	path = strings.TrimSpace(path)
+	if path == "" {
+		return "", nil
+	}
+	abs, err := filepath.Abs(path)
+	if err != nil {
+		return "", fmt.Errorf("%w: repo", ErrInvalid)
+	}
+	info, err := os.Stat(abs)
+	if err != nil || !info.IsDir() {
+		return "", fmt.Errorf("%w: repo is not a directory", ErrInvalid)
+	}
+	dir := abs
+	for {
+		if _, err := os.Stat(filepath.Join(dir, ".git")); err == nil {
+			return dir, nil
+		}
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return abs, nil
+		}
+		dir = parent
+	}
 }
 
 type MoveToProject struct {

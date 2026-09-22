@@ -3,10 +3,48 @@ package store
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/model"
 )
+
+func TestProjectRepoRoundTrip(t *testing.T) {
+	s := testStore(t)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	nested := filepath.Join(root, "cmd")
+	if err := os.Mkdir(nested, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p, err := s.CreateProject(CreateProject{Title: "Tracker", Repo: nested})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Repo != root {
+		t.Fatalf("repo %q want %q", p.Repo, root)
+	}
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.ProjectRef == nil || m.ProjectRef.Repo != root {
+		t.Fatalf("projectRef %+v", m.ProjectRef)
+	}
+	cleared := ""
+	got, err := s.UpdateProject(p.ID, UpdateProject{Repo: &cleared})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Repo != "" {
+		t.Fatalf("cleared repo %q", got.Repo)
+	}
+	if _, err := s.CreateProject(CreateProject{Title: "Bad", Repo: filepath.Join(root, "missing")}); err == nil {
+		t.Fatal("expected invalid repo")
+	}
+}
 
 func TestVersionedProjectRoundTrip(t *testing.T) {
 	s := testStore(t)

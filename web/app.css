@@ -561,6 +561,12 @@ footer > span { white-space: nowrap; }
 footer .foot-counts { color: var(--muted); }
 footer .foot-counts b { color: var(--fg); font-weight: 600; }
 footer .foot-counts .take { color: var(--accent); }
+footer .foot-repo {
+  min-width: 0;
+  max-width: 42vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
 .swatches { display: flex; align-items: center; gap: 8px; }
 .swatch {
   width: 12px;

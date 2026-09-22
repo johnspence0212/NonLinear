@@ -106,7 +106,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementat
 
 | Move | MCP tool |
 | --- | --- |
-| List / get / create project | `list_projects`, `get_project`, `create_project` |
+| List / get / create / update project | `list_projects`, `get_project`, `create_project`, `update_project` |
 | Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
@@ -120,9 +120,9 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Implementat
 
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
-`GET /api/health` returns `{ ok, version, data, issues }` so a later client can detect an update. The UI footer and **settings** show the same version. Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
+`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
 
 ## Views
 
@@ -136,10 +136,10 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
 | `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
 | `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
-| `#/project/{id}` | Project destination, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
+| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
 | `#/spec/{id}` | Spec body, approve, create implementation plan |
 | `#/plan/{id}` | Plan body plus ticket list / compose / blockers (same as a map's tickets) |
-| `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the repo NonLinear was started in, import a map file, wipe the database |
+| `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
 
