@@ -6,6 +6,7 @@ const state = {
   selected: 0,
   error: "",
   notice: "",
+  busy: "",
   stats: { all: 0, open: 0, closed: 0, maps: 0, projects: 0, frontier: 0, blocked: 0 },
   labels: [],
   version: "",
@@ -181,7 +182,44 @@ function flash() {
   return err + note;
 }
 
+function busyLine(msg) {
+  return `<div class="busy" role="status"><span class="spin" aria-hidden="true"></span>${esc(msg)}</div>`;
+}
+
+function setBusy(msg) {
+  state.busy = msg || "";
+  if (!state.busy) {
+    document.body.classList.remove("is-busy");
+    main.querySelector(".busy")?.remove();
+    return;
+  }
+  document.body.classList.add("is-busy");
+  const el = main.querySelector(".busy");
+  if (el) {
+    el.outerHTML = busyLine(state.busy);
+    return;
+  }
+  main.insertAdjacentHTML("afterbegin", busyLine(state.busy));
+}
+
+function showSettingsLoading() {
+  if (main.querySelector(".settings-meta")) {
+    setBusy("asking the cursor cli…");
+    return;
+  }
+  document.body.classList.add("is-busy");
+  main.innerHTML = box("<strong>settings</strong>", `<div class="box-b pad">${busyLine("asking the cursor cli…")}</div>`);
+  syncChrome();
+}
+
 async function sendCursor(action, id) {
+  const wait = {
+    issue: "sending to cursor…",
+    "to-spec": "starting to spec…",
+    "to-plan": "starting to plan…",
+    "to-tickets": "starting to tickets…",
+  };
+  setBusy(wait[action] || "talking to cursor…");
   const res = await api("/api/cursor/run", {
     method: "POST",
     body: JSON.stringify({ action, id }),
@@ -1450,6 +1488,8 @@ async function importMapFile(file) {
 }
 
 async function act(issue, kind) {
+  const slow = kind === "approve" || kind === "to-spec" || kind === "to-plan" || kind === "send-cursor";
+  if (slow && document.body.classList.contains("is-busy")) return;
   try {
     if (kind === "claim") await api(`/api/issues/${issue.id}/claim`, { method: "POST", body: "{}" });
     if (kind === "unclaim") await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ assignee: "" }) });
@@ -1473,6 +1513,7 @@ async function act(issue, kind) {
       await api(`/api/issues/${issue.id}/clear-route`, { method: "POST", body: "{}" });
     }
     if (kind === "approve") {
+      setBusy("approving…");
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
       try {
         await sendCursor("to-tickets", issue.id);
@@ -1519,13 +1560,15 @@ async function act(issue, kind) {
 
 async function paint() {
   state.viewRepo = "";
+  const r = route();
+  if (r.name === "settings") showSettingsLoading();
+  else setBusy("");
   try {
     await refreshStats();
   } catch (err) {
     state.error = err.message;
   }
   try {
-    const r = route();
     const si = $("#global-search");
     if (si && document.activeElement !== si) si.value = r.name === "search" ? r.query : "";
     if (r.name === "list" && state.filter === "home") {
@@ -1629,12 +1672,15 @@ async function renderSearch(query) {
 
 async function renderSettings() {
   const s = state.stats;
+  showSettingsLoading();
   let cursor = { model: "", workspace: "", models: [], cli: false, cliError: "" };
   try {
     cursor = await api("/api/cursor");
   } catch (err) {
     state.error = err.message;
   }
+  document.body.classList.remove("is-busy");
+  state.busy = "";
   const models = cursor.models || [];
   const known = models.includes(cursor.model);
   const modelField = cursor.cli
@@ -1674,6 +1720,8 @@ async function renderSettings() {
   if (form) {
     form.addEventListener("submit", async (e) => {
       e.preventDefault();
+      if (document.body.classList.contains("is-busy")) return;
+      setBusy("saving model…");
       try {
         await api("/api/cursor", {
           method: "PUT",
@@ -1719,6 +1767,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
   }
   const settings = e.target.closest("[data-go=settings]");
   if (settings) {
+    showSettingsLoading();
     location.hash = "#/settings";
     return;
   }

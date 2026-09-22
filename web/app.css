@@ -441,6 +441,28 @@ h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
 .settings-meta { display: flex; flex-direction: column; gap: 6px; }
 .settings-warn { color: var(--warn); margin: 12px 0 4px; }
 .notice { color: var(--accent); margin: 0 0 10px; }
+.busy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--accent);
+  margin: 0 0 10px;
+}
+.spin {
+  width: 12px;
+  height: 12px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex: 0 0 auto;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+body.is-busy .actions button,
+body.is-busy #cursor-settings button {
+  opacity: 0.45;
+  pointer-events: none;
+}
 textarea {
   width: 100%;
   min-height: 120px;
