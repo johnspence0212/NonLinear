@@ -524,6 +524,27 @@ func TestMCPProjectLifecycle(t *testing.T) {
 	if toolJSON(t, plan)["kind"] != "plan" {
 		t.Fatalf("plan: %v", toolJSON(t, plan))
 	}
+	second, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":     "Second session",
+			"labels":    []string{"wayfinder:map"},
+			"projectId": pid,
+		},
+	})
+	if err != nil || second.IsError {
+		t.Fatalf("second map: %v %v", err, second)
+	}
+	own, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "advance_to_plan",
+		Arguments: map[string]any{"id": int(toolJSON(t, second)["id"].(float64))},
+	})
+	if err != nil || own.IsError {
+		t.Fatalf("advance_to_plan: %v %v", err, own)
+	}
+	if toolJSON(t, own)["kind"] != "plan" || toolJSON(t, own)["id"] == toolJSON(t, plan)["id"] {
+		t.Fatalf("second plan should be new: %v vs %v", toolJSON(t, own), toolJSON(t, plan))
+	}
 	listed, err := session.CallTool(ctx, &mcp.CallToolParams{Name: "list_projects", Arguments: map[string]any{}})
 	if err != nil || listed.IsError {
 		t.Fatalf("list: %v %v", err, listed)

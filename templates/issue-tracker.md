@@ -62,6 +62,7 @@ A **Project** (`P-{id}`) parents Decision Maps → Spec → Implementation Plan.
 - **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Fill the SPEC body via `/to-spec`, not the map.
 - **Approve spec**: `approve_spec` with the spec `id`.
 - **Create plan**: `create_plan` with an approved spec `id`. Draft plan; implementation tickets are children (`parentId` = plan id). Same `blockedBy` / claim / frontier rules as map tickets.
+- **Make the plan in one step**: `advance_to_plan` with a map or spec `id`. Creates that map's spec if needed, approves it, and creates a new plan. Do not attach tickets to another map's plan. Parent each implementation ticket to the returned plan id.
 - **Activate / deliver**: `activate_plan` then `deliver_plan` with the plan `id`. Explicit complete; not inferred from zero open tickets.
 - **Route is clear**: `clear_route` with the map `id`. Does not create a spec.
 

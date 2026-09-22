@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/cursor"
@@ -350,6 +351,14 @@ func TestSecondMapDoesNotInheritSpecHTTP(t *testing.T) {
 	if len(specs) != 2 {
 		t.Fatalf("project specs: %v", got["specs"])
 	}
+	firstPlan := postJSON(t, mux, "/api/issues/"+itoa(first["id"])+"/advance-to-plan", map[string]any{})
+	secondPlan := postJSON(t, mux, "/api/issues/"+itoa(second["id"])+"/advance-to-plan", map[string]any{})
+	if firstPlan["kind"] != "plan" || secondPlan["kind"] != "plan" || firstPlan["id"] == secondPlan["id"] {
+		t.Fatalf("each map should get its own plan: %v %v", firstPlan, secondPlan)
+	}
+	if firstPlan["derivedFromArtifactId"] == secondPlan["derivedFromArtifactId"] {
+		t.Fatalf("plans inherited the same spec: %v %v", firstPlan, secondPlan)
+	}
 }
 
 func TestProjectLifecycle(t *testing.T) {
@@ -411,6 +420,14 @@ func TestAdvanceToSpecHTTP(t *testing.T) {
 	spec := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/advance-to-spec", map[string]any{})
 	if spec["kind"] != "spec" || spec["lifecycle"] != "draft" {
 		t.Fatalf("spec: %v", spec)
+	}
+	again := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/ensure-spec", map[string]any{})
+	if again["id"] != spec["id"] {
+		t.Fatalf("ensure-spec should reuse: %v vs %v", again, spec)
+	}
+	plan := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/advance-to-plan", map[string]any{})
+	if plan["kind"] != "plan" || plan["derivedFromArtifactId"] != spec["id"] {
+		t.Fatalf("advance-to-plan: %v", plan)
 	}
 	got := getJSON(t, mux, "/api/issues/"+itoa(m["id"]))
 	if got["lifecycle"] != "ready_for_spec" {
@@ -535,12 +552,23 @@ func TestCursorRunHTTP(t *testing.T) {
 	}
 
 	specd := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "to-spec", "id": parent["id"]})
-	if specd["prompt"] != "/to-spec #"+parent["identifier"].(string) {
-		t.Fatalf("to-spec: %v", specd)
+	specIssue, _ := specd["issue"].(map[string]any)
+	if specIssue["kind"] != "spec" {
+		t.Fatalf("to-spec should create a spec: %v", specd)
+	}
+	if !strings.Contains(fmt.Sprint(specd["prompt"]), "/to-spec #"+fmt.Sprint(specIssue["identifier"])) {
+		t.Fatalf("to-spec prompt should point at the spec: %v", specd)
 	}
 	planned := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "to-plan", "id": parent["id"]})
-	if planned["prompt"] != "/to-tickets #"+parent["identifier"].(string) {
-		t.Fatalf("to-plan: %v", planned)
+	planIssue, _ := planned["issue"].(map[string]any)
+	if planIssue["kind"] != "plan" {
+		t.Fatalf("to-plan should create a plan: %v", planned)
+	}
+	if !strings.Contains(fmt.Sprint(planned["prompt"]), fmt.Sprintf("parentId=%d", int(planIssue["id"].(float64)))) {
+		t.Fatalf("to-plan prompt should parent tickets to the plan: %v", planned)
+	}
+	if planIssue["derivedFromArtifactId"] != specIssue["id"] {
+		t.Fatalf("plan should derive from this map's spec: plan=%v spec=%v", planIssue, specIssue)
 	}
 
 	onProj := postJSON(t, mux, "/api/issues", map[string]any{

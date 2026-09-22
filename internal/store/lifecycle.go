@@ -417,9 +417,42 @@ func (s *Store) createSpecLocked(src model.Issue) (model.IssueView, error) {
 	return s.viewLocked(issue), nil
 }
 
+// EnsureSpec returns the spec derived from this map, creating a draft
+// spec if this map does not have one yet. A spec id is returned as-is.
+func (s *Store) EnsureSpec(id int) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ensureSpecLocked(id)
+}
+
+func (s *Store) ensureSpecLocked(id int) (model.IssueView, error) {
+	idx, issue, ok := s.findIndexLocked(id)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	if model.IsSpec(issue) {
+		return s.viewLocked(issue), nil
+	}
+	if !model.IsMap(issue) {
+		return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map or spec", ErrInvalid, id)
+	}
+	if existing, found := s.derivedLocked(model.KindSpec, issue.ID); found {
+		return s.viewLocked(existing), nil
+	}
+	issue.Lifecycle = model.MapLifecycleReadyForSpec
+	issue.Kind = model.KindDecisionMap
+	issue.UpdatedAt = time.Now().UTC()
+	s.db.Issues[idx] = issue
+	return s.createSpecLocked(issue)
+}
+
 func (s *Store) ApproveSpec(specID int) (model.IssueView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	return s.approveSpecLocked(specID)
+}
+
+func (s *Store) approveSpecLocked(specID int) (model.IssueView, error) {
 	idx, issue, ok := s.findIndexLocked(specID)
 	if !ok {
 		return model.IssueView{}, ErrNotFound
@@ -439,6 +472,47 @@ func (s *Store) ApproveSpec(specID int) (model.IssueView, error) {
 	return s.viewLocked(issue), nil
 }
 
+// AdvanceToPlan returns the implementation plan for a map, spec, or plan.
+// From a map it creates that map's spec if needed, approves it, and
+// creates a new plan. Existing artifacts are reused; a second map does
+// not inherit another map's plan.
+func (s *Store) AdvanceToPlan(id int) (model.IssueView, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.advanceToPlanLocked(id)
+}
+
+func (s *Store) advanceToPlanLocked(id int) (model.IssueView, error) {
+	_, issue, ok := s.findIndexLocked(id)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	if model.IsPlan(issue) {
+		return s.viewLocked(issue), nil
+	}
+	spec := issue
+	if model.IsMap(issue) {
+		sv, err := s.ensureSpecLocked(id)
+		if err != nil {
+			return model.IssueView{}, err
+		}
+		spec = sv.Issue
+	} else if !model.IsSpec(issue) {
+		return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map, spec, or plan", ErrInvalid, id)
+	}
+	if spec.Lifecycle != model.SpecLifecycleApproved {
+		approved, err := s.approveSpecLocked(spec.ID)
+		if err != nil {
+			return model.IssueView{}, err
+		}
+		spec = approved.Issue
+	}
+	if existing, found := s.derivedLocked(model.KindPlan, spec.ID); found {
+		return s.viewLocked(existing), nil
+	}
+	return s.createPlanLocked(spec)
+}
+
 func (s *Store) CreatePlan(specID int) (model.IssueView, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -455,6 +529,10 @@ func (s *Store) CreatePlan(specID int) (model.IssueView, error) {
 	if existing, found := s.derivedLocked(model.KindPlan, specID); found {
 		return model.IssueView{}, fmt.Errorf("%w: plan already exists (%s)", ErrInvalid, existing.Identifier)
 	}
+	return s.createPlanLocked(src)
+}
+
+func (s *Store) createPlanLocked(src model.Issue) (model.IssueView, error) {
 	now := time.Now().UTC()
 	id := s.db.NextID
 	s.db.NextID++

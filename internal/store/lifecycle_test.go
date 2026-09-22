@@ -526,6 +526,80 @@ func TestSecondMapDoesNotInheritSpec(t *testing.T) {
 	}
 }
 
+func TestAdvanceToPlanCreatesOwnPlan(t *testing.T) {
+	s := testStore(t)
+	p, err := s.CreateProject(CreateProject{Title: "Idle Frontier"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := s.Create(CreateIssue{Title: "First session", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.AdvanceToPlan(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.Kind != model.KindPlan || plan.DerivedFromArtifactID == nil {
+		t.Fatalf("plan: %+v", plan)
+	}
+	spec, err := s.Get(*plan.DerivedFromArtifactID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if spec.Kind != model.KindSpec || spec.DerivedFromArtifactID == nil || *spec.DerivedFromArtifactID != first.ID {
+		t.Fatalf("spec should belong to first map: %+v", spec)
+	}
+	if spec.Lifecycle != model.SpecLifecycleApproved {
+		t.Fatalf("spec lifecycle %s", spec.Lifecycle)
+	}
+
+	second, err := s.Create(CreateIssue{Title: "Second session", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	own, err := s.AdvanceToPlan(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if own.ID == plan.ID {
+		t.Fatal("second map inherited the first plan")
+	}
+	if own.DerivedFromArtifactID == nil || *own.DerivedFromArtifactID == spec.ID {
+		t.Fatalf("second plan should derive from its own spec: %+v", own.DerivedFromArtifactID)
+	}
+	again, err := s.AdvanceToPlan(second.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.ID != own.ID {
+		t.Fatalf("second advance should reuse the plan: got %d want %d", again.ID, own.ID)
+	}
+	ticket, err := s.Create(CreateIssue{Title: "Implement the route", ParentID: &own.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.ParentID == nil || *ticket.ParentID != own.ID {
+		t.Fatalf("ticket parent %v want %d", ticket.ParentID, own.ID)
+	}
+	gotPlan, err := s.Get(own.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(gotPlan.Children) != 1 || gotPlan.Children[0].ID != ticket.ID {
+		t.Fatalf("plan children: %+v", gotPlan.Children)
+	}
+	gotFirst, err := s.Get(first.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, child := range gotFirst.Children {
+		if child.ID == ticket.ID {
+			t.Fatal("ticket landed on the map instead of the plan")
+		}
+	}
+}
+
 func intPtr(n int) *int { return &n }
 
 func TestMoveIssueToProjectMovesDescendants(t *testing.T) {

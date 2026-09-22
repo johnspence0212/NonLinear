@@ -22,12 +22,13 @@ type Settings struct {
 }
 
 type RunResult struct {
-	Action    string `json:"action"`
-	Mode      string `json:"mode"`
-	Model     string `json:"model,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	Prompt    string `json:"prompt"`
-	PID       int    `json:"pid,omitempty"`
+	Action    string          `json:"action"`
+	Mode      string          `json:"mode"`
+	Model     string          `json:"model,omitempty"`
+	Workspace string          `json:"workspace,omitempty"`
+	Prompt    string          `json:"prompt"`
+	PID       int             `json:"pid,omitempty"`
+	Issue     model.IssueView `json:"issue,omitempty"`
 }
 
 type Status struct {
@@ -369,20 +370,15 @@ func Prompt(action string, issue model.IssueView) (string, error) {
 		}
 		return fmt.Sprintf("This ticket is unblocked. Work it in this workspace using the nonlinear issue tracker. get_issue id %d. %s: %s", issue.ID, issue.Identifier, issue.Title), nil
 	case "to-spec":
-		if !model.IsMap(issue.Issue) {
-			return "", fmt.Errorf("%w: not a map", ErrInvalid)
-		}
-		return "/to-spec #" + issue.Identifier, nil
-	case "to-plan":
-		if !model.IsMap(issue.Issue) {
-			return "", fmt.Errorf("%w: not a map", ErrInvalid)
-		}
-		return "/to-tickets #" + issue.Identifier, nil
-	case "to-tickets":
 		if !model.IsSpec(issue.Issue) {
 			return "", fmt.Errorf("%w: not a spec", ErrInvalid)
 		}
-		return "/to-tickets #" + issue.Identifier, nil
+		return fmt.Sprintf("/to-spec #%s\n\nFill spec %s (id %d). Write the document on this spec issue, not the map.", issue.Identifier, issue.Identifier, issue.ID), nil
+	case "to-plan", "to-tickets":
+		if !model.IsPlan(issue.Issue) {
+			return "", fmt.Errorf("%w: not a plan", ErrInvalid)
+		}
+		return fmt.Sprintf("/to-tickets #%s\n\nFill implementation plan %s (id %d). Create each implementation ticket with parentId=%d so it lands on this plan. Do not parent tickets to a map and do not leave them without a parent.", issue.Identifier, issue.Identifier, issue.ID, issue.ID), nil
 	default:
 		return "", fmt.Errorf("%w: unknown action", ErrInvalid)
 	}

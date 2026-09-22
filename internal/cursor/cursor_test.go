@@ -47,21 +47,28 @@ func TestPrompt(t *testing.T) {
 		t.Fatal("blocked ticket should not send")
 	}
 	m := model.IssueView{Issue: model.Issue{Identifier: "NL-1", Kind: model.KindDecisionMap, Labels: []string{"wayfinder:map"}}}
-	specPrompt, err := Prompt("to-spec", m)
-	if err != nil || specPrompt != "/to-spec #NL-1" {
+	spec := model.IssueView{Issue: model.Issue{ID: 2, Identifier: "NL-2", Kind: model.KindSpec}}
+	specPrompt, err := Prompt("to-spec", spec)
+	if err != nil || !strings.Contains(specPrompt, "/to-spec #NL-2") || !strings.Contains(specPrompt, "id 2") {
 		t.Fatalf("to-spec: %q %v", specPrompt, err)
 	}
-	planPrompt, err := Prompt("to-plan", m)
-	if err != nil || planPrompt != "/to-tickets #NL-1" {
+	if _, err := Prompt("to-spec", m); err == nil {
+		t.Fatal("to-spec on a map")
+	}
+	plan := model.IssueView{Issue: model.Issue{ID: 3, Identifier: "NL-3", Kind: model.KindPlan}}
+	planPrompt, err := Prompt("to-plan", plan)
+	if err != nil || !strings.Contains(planPrompt, "/to-tickets #NL-3") || !strings.Contains(planPrompt, "parentId=3") {
 		t.Fatalf("to-plan: %q %v", planPrompt, err)
 	}
-	spec := model.IssueView{Issue: model.Issue{Identifier: "NL-2", Kind: model.KindSpec}}
-	tickets, err := Prompt("to-tickets", spec)
-	if err != nil || tickets != "/to-tickets #NL-2" {
+	tickets, err := Prompt("to-tickets", plan)
+	if err != nil || !strings.Contains(tickets, "parentId=3") {
 		t.Fatalf("to-tickets: %q %v", tickets, err)
 	}
-	if _, err := Prompt("to-tickets", m); err == nil {
-		t.Fatal("to-tickets on a map")
+	if _, err := Prompt("to-plan", m); err == nil {
+		t.Fatal("to-plan on a map")
+	}
+	if _, err := Prompt("to-tickets", spec); err == nil {
+		t.Fatal("to-tickets on a spec")
 	}
 }
 

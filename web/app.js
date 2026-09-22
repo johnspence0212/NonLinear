@@ -253,6 +253,7 @@ async function sendCursor(action, id) {
     await holdBusy(started);
     const model = res.model ? ` · ${res.model}` : "";
     state.notice = res.mode === "terminal" ? `opened cursor${model}` : `sent to cursor${model}`;
+    return res;
   } catch (err) {
     await holdBusy(started);
     throw err;
@@ -1104,6 +1105,7 @@ async function renderSpec(id) {
   const hasPlan = plans.length > 0;
   const actions = [
     issue.lifecycle === "draft" ? `<button data-act="approve">approve spec</button>` : "",
+    issue.lifecycle === "approved" ? `<button data-act="to-plan">to plan</button>` : "",
     issue.lifecycle === "approved" && !hasPlan ? `<button data-act="create-plan">create implementation plan</button>` : "",
     `<button data-act="edit">edit</button>`,
     `<button data-act="delete" class="danger">delete</button>`,
@@ -1165,6 +1167,7 @@ async function renderPlan(id) {
   const pct = total ? Math.round((done / total) * 100) : 0;
   const life = issue.lifecycle || "draft";
   const actions = [
+    `<button data-act="to-tickets">to tickets</button>`,
     life === "draft" ? `<button data-act="activate-plan">start implementation</button>` : "",
     life === "active" ? `<button data-act="deliver-plan">mark delivered</button>` : "",
     `<button data-act="edit">edit</button>`,
@@ -1519,7 +1522,7 @@ async function importMapFile(file) {
 }
 
 async function act(issue, kind) {
-  const slow = kind === "approve" || kind === "to-spec" || kind === "to-plan" || kind === "send-cursor";
+  const slow = kind === "approve" || kind === "to-spec" || kind === "to-plan" || kind === "to-tickets" || kind === "send-cursor";
   if (slow && document.body.classList.contains("is-busy")) return;
   try {
     if (kind === "claim") await api(`/api/issues/${issue.id}/claim`, { method: "POST", body: "{}" });
@@ -1547,22 +1550,42 @@ async function act(issue, kind) {
       armBusyButton("approve", "approving…");
       await api(`/api/issues/${issue.id}/approve`, { method: "POST", body: "{}" });
       try {
-        await sendCursor("to-tickets", issue.id);
+        const res = await sendCursor("to-plan", issue.id);
+        if (res && res.issue) location.hash = hrefFor(res.issue);
       } catch (err) {
         state.error = "approved. " + err.message;
       }
       await paint();
       return;
     }
-    if (kind === "to-spec" || kind === "to-plan" || kind === "send-cursor") {
+    if (kind === "to-spec" || kind === "to-plan" || kind === "to-tickets" || kind === "send-cursor") {
       const action = kind === "send-cursor" ? "issue" : kind;
       const wait = {
         issue: "sending to cursor…",
         "to-spec": "starting to spec…",
         "to-plan": "starting to plan…",
+        "to-tickets": "starting to tickets…",
       };
       armBusyButton(kind, wait[action] || "talking to cursor…");
-      await sendCursor(action, issue.id);
+      let target = issue;
+      if (kind === "to-spec") {
+        target = await api(`/api/issues/${issue.id}/ensure-spec`, { method: "POST", body: "{}" });
+        location.hash = hrefFor(target);
+      }
+      if (kind === "to-plan") {
+        target = await api(`/api/issues/${issue.id}/advance-to-plan`, { method: "POST", body: "{}" });
+        location.hash = hrefFor(target);
+      }
+      try {
+        await sendCursor(action, target.id);
+      } catch (err) {
+        if (kind === "to-spec" || kind === "to-plan") {
+          state.error = `${kind === "to-spec" ? "spec ready." : "plan ready."} ${err.message}`;
+          await paint();
+          return;
+        }
+        throw err;
+      }
       await paint();
       return;
     }

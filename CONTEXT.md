@@ -32,7 +32,7 @@ A map with no `projectId` stays off every Project. Creating a map does not inven
 
 Explicit. Not inferred from “zero open tickets”. MCP lifecycle actions do not run skills or fabricate a completed document.
 
-The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `agent models` and stores the chosen one. A Project can set an optional `repo` (the folder Cursor uses for that project). Otherwise the git root of the directory NonLinear was started in is the default. The footer shows the repo in play. **to spec** on a map runs `/to-spec`. **to plan** on a map runs `/to-tickets`. **approve spec** approves, then runs `/to-tickets`. An open unblocked ticket can be **sent to cursor**.
+The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `agent models` and stores the chosen one. A Project can set an optional `repo` (the folder Cursor uses for that project). Otherwise the git root of the directory NonLinear was started in is the default. The footer shows the repo in play. **to spec** on a map creates that map's spec if needed, then runs `/to-spec` on the spec. **to plan** creates that map's spec/plan if needed, then runs `/to-tickets` on the plan so tickets parent to the plan. **approve spec** approves, creates the plan, then runs `/to-tickets` on the plan. An open unblocked ticket can be **sent to cursor**.
 
 1. Map **ready for spec** → map `ready_for_spec`
 2. **Create spec** → draft spec, empty to-spec skeleton, destination copied from the map if present
@@ -43,4 +43,4 @@ The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `ag
 7. **Move to project** → set `projectId` on an issue and descendants, or on every issue currently on a source Project
 8. **Delete project** → remove the Project and every issue on it
 
-`advance_to_spec` combines 1+2 in one call: marks the map ready and creates the draft spec. Prefer it for "make the spec".
+`advance_to_spec` combines 1+2 in one call: marks the map ready and creates the draft spec. Prefer it for "make the spec". `advance_to_plan` creates that map's spec if needed, approves it, and creates a new plan. A second map does not inherit another map's spec or plan.

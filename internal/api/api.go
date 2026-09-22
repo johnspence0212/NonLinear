@@ -45,8 +45,10 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/issues/{id}/clear-route", h.clearRoute)
 	mux.HandleFunc("POST /api/issues/{id}/create-spec", h.createSpec)
 	mux.HandleFunc("POST /api/issues/{id}/advance-to-spec", h.advanceToSpec)
+	mux.HandleFunc("POST /api/issues/{id}/ensure-spec", h.ensureSpec)
 	mux.HandleFunc("POST /api/issues/{id}/approve", h.approveSpec)
 	mux.HandleFunc("POST /api/issues/{id}/create-plan", h.createPlan)
+	mux.HandleFunc("POST /api/issues/{id}/advance-to-plan", h.advanceToPlan)
 	mux.HandleFunc("POST /api/issues/{id}/activate-plan", h.activatePlan)
 	mux.HandleFunc("POST /api/issues/{id}/deliver-plan", h.deliverPlan)
 	mux.HandleFunc("DELETE /api/issues/{id}", h.delete)
@@ -97,11 +99,22 @@ func (h *Handler) cursorRun(w http.ResponseWriter, r *http.Request) {
 		writeStoreError(w, err)
 		return
 	}
+	switch body.Action {
+	case "to-spec":
+		issue, err = h.Store.EnsureSpec(body.ID)
+	case "to-plan", "to-tickets":
+		issue, err = h.Store.AdvanceToPlan(body.ID)
+	}
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
 	result, err := h.cursorSvc().Run(r.Context(), body.Action, issue)
 	if err != nil {
 		writeCursorError(w, err)
 		return
 	}
+	result.Issue = issue
 	writeJSON(w, http.StatusOK, result)
 }
 
@@ -572,12 +585,20 @@ func (h *Handler) advanceToSpec(w http.ResponseWriter, r *http.Request) {
 	h.issueActionCreated(w, r, h.Store.AdvanceToSpec)
 }
 
+func (h *Handler) ensureSpec(w http.ResponseWriter, r *http.Request) {
+	h.issueActionCreated(w, r, h.Store.EnsureSpec)
+}
+
 func (h *Handler) approveSpec(w http.ResponseWriter, r *http.Request) {
 	h.issueAction(w, r, h.Store.ApproveSpec)
 }
 
 func (h *Handler) createPlan(w http.ResponseWriter, r *http.Request) {
 	h.issueActionCreated(w, r, h.Store.CreatePlan)
+}
+
+func (h *Handler) advanceToPlan(w http.ResponseWriter, r *http.Request) {
+	h.issueActionCreated(w, r, h.Store.AdvanceToPlan)
 }
 
 func (h *Handler) activatePlan(w http.ResponseWriter, r *http.Request) {
