@@ -221,7 +221,7 @@ function showSettingsLoading() {
   syncChrome();
 }
 
-async function holdBusy(started, minMs = 700) {
+async function holdBusy(started, minMs = 900) {
   const wait = minMs - (Date.now() - started);
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
