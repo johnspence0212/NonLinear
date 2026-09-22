@@ -53,6 +53,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/import", h.importMap)
 	mux.HandleFunc("POST /api/wipe", h.wipe)
 	mux.HandleFunc("GET /api/cursor", h.cursorStatus)
+	mux.HandleFunc("PUT /api/cursor", h.cursorSave)
 	mux.HandleFunc("POST /api/cursor/run", h.cursorRun)
 }
 
@@ -65,6 +66,21 @@ func (h *Handler) cursorSvc() *cursor.Service {
 
 func (h *Handler) cursorStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, h.cursorSvc().Status(r.Context()))
+}
+
+func (h *Handler) cursorSave(w http.ResponseWriter, r *http.Request) {
+	var body struct {
+		Model string `json:"model"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	cfg, err := h.cursorSvc().Save(cursor.Settings{Model: body.Model})
+	if err != nil {
+		writeCursorError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
 }
 
 func (h *Handler) cursorRun(w http.ResponseWriter, r *http.Request) {

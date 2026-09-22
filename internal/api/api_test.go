@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/johnspence0212/NonLinear/internal/cursor"
@@ -425,10 +424,22 @@ func TestCursorRunHTTP(t *testing.T) {
 		return "", os.ErrNotExist
 	}
 	svc.Command = func(name string, args ...string) *exec.Cmd {
+		if len(args) == 1 && args[0] == "models" {
+			return exec.Command("sh", "-c", "printf '%s\\n' 'composer-2 (current)' 'gpt-5.4'")
+		}
 		return exec.Command("true")
 	}
 	mux := http.NewServeMux()
 	(&Handler{Store: st, Cursor: svc}).Register(mux)
+
+	status := getJSON(t, mux, "/api/cursor")
+	if status["workspace"] != root || fmt.Sprint(status["models"]) != "[composer-2 gpt-5.4]" {
+		t.Fatalf("status: %v", status)
+	}
+	saved := putJSON(t, mux, "/api/cursor", map[string]any{"model": "gpt-5.4"})
+	if saved["model"] != "gpt-5.4" {
+		t.Fatalf("saved: %v", saved)
+	}
 
 	parent := postJSON(t, mux, "/api/issues", map[string]any{
 		"title":  "Map",
@@ -447,11 +458,8 @@ func TestCursorRunHTTP(t *testing.T) {
 	})
 
 	sent := postJSON(t, mux, "/api/cursor/run", map[string]any{"action": "issue", "id": openTicket["id"]})
-	if sent["mode"] != "print" || sent["workspace"] != root {
+	if sent["mode"] != "print" || sent["workspace"] != root || sent["model"] != "gpt-5.4" {
 		t.Fatalf("sent: %v", sent)
-	}
-	if strings.Contains(fmt.Sprint(sent["prompt"]), "--model") {
-		t.Fatalf("prompt should not carry flags: %v", sent)
 	}
 	reqRaw, _ := json.Marshal(map[string]any{"action": "issue", "id": blocked["id"]})
 	req := httptest.NewRequest(http.MethodPost, "/api/cursor/run", bytes.NewReader(reqRaw))

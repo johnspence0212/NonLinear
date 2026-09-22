@@ -28,6 +28,14 @@ func TestGitRootAndModelConfig(t *testing.T) {
 	}
 }
 
+func TestParseModels(t *testing.T) {
+	got := ParseModels("Available models:\n\n- composer-2 (current)\n- gpt-5.4\n* claude-4.5\nnot a model\n")
+	want := []string{"composer-2", "gpt-5.4", "claude-4.5"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("models %v", got)
+	}
+}
+
 func TestPrompt(t *testing.T) {
 	ticket := model.IssueView{Issue: model.Issue{ID: 7, Identifier: "NL-7", Title: "Lock the door", State: model.StateOpen}}
 	got, err := Prompt("issue", ticket)
@@ -57,19 +65,42 @@ func TestPrompt(t *testing.T) {
 	}
 }
 
-func TestRunLeavesModelAndWorkspaceToCLI(t *testing.T) {
+func TestStatusListsCLIModels(t *testing.T) {
 	root := t.TempDir()
 	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	cfg := filepath.Join(t.TempDir(), "cli-config.json")
-	if err := os.WriteFile(cfg, []byte(`{"model":{"id":"composer-2"}}`), 0o644); err != nil {
+	s := New(t.TempDir())
+	s.Getwd = func() (string, error) { return root, nil }
+	s.LookPath = func(name string) (string, error) {
+		if name == "agent" {
+			return "/bin/agent", nil
+		}
+		return "", os.ErrNotExist
+	}
+	s.Command = func(name string, args ...string) *exec.Cmd {
+		if len(args) == 1 && args[0] == "models" {
+			return exec.Command("sh", "-c", "printf '%s\\n' 'composer-2 (current)' 'gpt-5.4'")
+		}
+		return exec.Command("true")
+	}
+	st := s.Status(t.Context())
+	if !st.CLI || strings.Join(st.Models, ",") != "composer-2,gpt-5.4" || st.Workspace != root {
+		t.Fatalf("status %+v", st)
+	}
+}
+
+func TestRunUsesSavedModelAndGitRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	s := New(t.TempDir())
-	s.ConfigPath = cfg
 	s.Getwd = func() (string, error) { return filepath.Join(root, "cmd"), nil }
 	if err := os.MkdirAll(filepath.Join(root, "cmd"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Save(Settings{Model: "gpt-5.4"}); err != nil {
 		t.Fatal(err)
 	}
 	var gotName string
@@ -92,14 +123,47 @@ func TestRunLeavesModelAndWorkspaceToCLI(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if res.Mode != "print" || res.Model != "composer-2" || res.Workspace != root {
+	if res.Mode != "print" || res.Model != "gpt-5.4" || res.Workspace != root {
 		t.Fatalf("result %+v", res)
 	}
-	if gotName != "/bin/agent" || contains(gotArgs, "--model") || contains(gotArgs, "--workspace") {
+	if gotName != "/bin/agent" || !contains(gotArgs, "--model") || !contains(gotArgs, "gpt-5.4") || contains(gotArgs, "--workspace") {
 		t.Fatalf("cmd %s %v", gotName, gotArgs)
 	}
 	if cmd.Dir != root {
 		t.Fatalf("dir %s", cmd.Dir)
+	}
+}
+
+func TestRunOmitsModelFlagWhenUnset(t *testing.T) {
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(t.TempDir(), "cli-config.json")
+	if err := os.WriteFile(cfg, []byte(`{"model":{"id":"composer-2"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	s := New(t.TempDir())
+	s.ConfigPath = cfg
+	s.Getwd = func() (string, error) { return root, nil }
+	var gotArgs []string
+	s.LookPath = func(name string) (string, error) {
+		if name == "agent" {
+			return "/bin/agent", nil
+		}
+		return "", os.ErrNotExist
+	}
+	s.Command = func(name string, args ...string) *exec.Cmd {
+		gotArgs = append([]string(nil), args...)
+		return exec.Command("true")
+	}
+	issue := model.IssueView{Issue: model.Issue{ID: 3, Identifier: "NL-3", Title: "Ship it", State: model.StateOpen}}
+	res, err := s.Run(t.Context(), "issue", issue)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Model != "composer-2" || contains(gotArgs, "--model") || contains(gotArgs, "--workspace") {
+		t.Fatalf("result %+v args %v", res, gotArgs)
 	}
 }
 

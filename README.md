@@ -139,7 +139,7 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | `#/project/{id}` | Project destination, derived stage, Decision Maps / Spec / Plan rows; compose another map onto this Project |
 | `#/spec/{id}` | Spec body, approve, create implementation plan |
 | `#/plan/{id}` | Plan body plus ticket list / compose / blockers (same as a map's tickets) |
-| `settings` | Version, data path, Cursor CLI status (its model and the repo NonLinear was started in), import a map file, wipe the database |
+| `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the repo NonLinear was started in, import a map file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
 

@@ -1,6 +1,7 @@
 package cursor
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -16,6 +17,10 @@ import (
 
 var ErrInvalid = errors.New("invalid request")
 
+type Settings struct {
+	Model string `json:"model"`
+}
+
 type RunResult struct {
 	Action    string `json:"action"`
 	Mode      string `json:"mode"`
@@ -26,16 +31,19 @@ type RunResult struct {
 }
 
 type Status struct {
-	Model     string `json:"model,omitempty"`
-	Workspace string `json:"workspace,omitempty"`
-	CLI       bool   `json:"cli"`
-	CLIError  string `json:"cliError,omitempty"`
+	Model     string   `json:"model,omitempty"`
+	Models    []string `json:"models"`
+	Workspace string   `json:"workspace,omitempty"`
+	CLI       bool     `json:"cli"`
+	CLIError  string   `json:"cliError,omitempty"`
 }
 
-// Service starts the Cursor CLI. The model comes from the CLI's own config.
-// The workspace is the git repo the process was started in.
+// Service starts the Cursor CLI. The workspace is the git repo the process
+// was started in. The model list comes from `agent models`; a chosen model
+// is stored locally and passed as --model.
 type Service struct {
 	Dir        string
+	Path       string
 	LookPath   func(string) (string, error)
 	Command    func(name string, args ...string) *exec.Cmd
 	Getwd      func() (string, error)
@@ -43,7 +51,7 @@ type Service struct {
 }
 
 func New(dataDir string) *Service {
-	return &Service{Dir: dataDir}
+	return &Service{Dir: dataDir, Path: filepath.Join(dataDir, "cursor.json")}
 }
 
 func (s *Service) lookPath(name string) (string, error) {
@@ -67,15 +75,95 @@ func (s *Service) getwd() (string, error) {
 	return os.Getwd()
 }
 
+func (s *Service) Load() (Settings, error) {
+	raw, err := os.ReadFile(s.Path)
+	if errors.Is(err, os.ErrNotExist) {
+		return Settings{}, nil
+	}
+	if err != nil {
+		return Settings{}, err
+	}
+	var cfg Settings
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return Settings{}, err
+	}
+	cfg.Model = strings.TrimSpace(cfg.Model)
+	return cfg, nil
+}
+
+func (s *Service) Save(in Settings) (Settings, error) {
+	cfg := Settings{Model: strings.TrimSpace(in.Model)}
+	if cfg.Model != "" && !modelOK(cfg.Model) {
+		return Settings{}, fmt.Errorf("%w: model %q", ErrInvalid, cfg.Model)
+	}
+	if err := os.MkdirAll(filepath.Dir(s.Path), 0o755); err != nil {
+		return Settings{}, err
+	}
+	raw, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return Settings{}, err
+	}
+	raw = append(raw, '\n')
+	if err := os.WriteFile(s.Path, raw, 0o644); err != nil {
+		return Settings{}, err
+	}
+	return cfg, nil
+}
+
 func (s *Service) Status(ctx context.Context) Status {
-	_ = ctx
-	out := Status{Workspace: s.workspace(), Model: s.cliModel()}
-	if _, err := s.lookPath("agent"); err != nil {
+	cfg, err := s.Load()
+	out := Status{Workspace: s.workspace(), Models: []string{}, Model: cfg.Model}
+	if err != nil {
+		out.CLIError = err.Error()
+		return out
+	}
+	bin, err := s.lookPath("agent")
+	if err != nil {
+		if out.Model == "" {
+			out.Model = s.cliModel()
+		}
 		out.CLIError = "cursor cli not found (agent)"
 		return out
 	}
 	out.CLI = true
+	models, err := s.listModels(ctx, bin)
+	if err != nil {
+		out.CLIError = err.Error()
+		if out.Model == "" {
+			out.Model = s.cliModel()
+		}
+		return out
+	}
+	out.Models = models
+	if out.Model == "" {
+		out.Model = s.cliModel()
+	}
 	return out
+}
+
+func (s *Service) listModels(ctx context.Context, bin string) ([]string, error) {
+	ctx, cancel := context.WithTimeout(ctx, 8*time.Second)
+	defer cancel()
+	cmd := s.command(bin, "models")
+	cmd.Env = os.Environ()
+	var buf bytes.Buffer
+	cmd.Stdout = &buf
+	cmd.Stderr = &buf
+	if err := cmd.Start(); err != nil {
+		return nil, err
+	}
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case <-ctx.Done():
+		_ = cmd.Process.Kill()
+		return nil, fmt.Errorf("listing models timed out")
+	case err := <-done:
+		if err != nil && buf.Len() == 0 {
+			return nil, err
+		}
+	}
+	return ParseModels(buf.String()), nil
 }
 
 func (s *Service) Run(ctx context.Context, action string, issue model.IssueView) (RunResult, error) {
@@ -91,9 +179,16 @@ func (s *Service) Run(ctx context.Context, action string, issue model.IssueView)
 	if err != nil {
 		return RunResult{}, fmt.Errorf("%w: cursor cli not found (agent)", ErrInvalid)
 	}
-	model := s.cliModel()
+	cfg, err := s.Load()
+	if err != nil {
+		return RunResult{}, err
+	}
+	model := cfg.Model
+	if model == "" {
+		model = s.cliModel()
+	}
 	_ = ctx
-	args := agentArgs(prompt, false)
+	args := agentArgs(cfg.Model, prompt, false)
 	if term := findTerminal(s.lookPath); term != "" {
 		pid, err := s.start(term, gnomeArgs(dir, bin, args), dir)
 		if err != nil {
@@ -101,7 +196,7 @@ func (s *Service) Run(ctx context.Context, action string, issue model.IssueView)
 		}
 		return RunResult{Action: action, Mode: "terminal", Model: model, Workspace: dir, Prompt: prompt, PID: pid}, nil
 	}
-	pid, err := s.start(bin, agentArgs(prompt, true), dir)
+	pid, err := s.start(bin, agentArgs(cfg.Model, prompt, true), dir)
 	if err != nil {
 		return RunResult{}, err
 	}
@@ -113,7 +208,7 @@ func (s *Service) start(name string, args []string, dir string) (int, error) {
 	cmd.Dir = dir
 	cmd.Env = os.Environ()
 	logPath := filepath.Join(s.Dir, "cursor-run.log")
-	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := os.OpenFile(logPath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o644)
 	if err != nil {
 		return 0, err
 	}
@@ -152,10 +247,13 @@ func gnomeArgs(dir, bin string, args []string) []string {
 	return out
 }
 
-func agentArgs(prompt string, print bool) []string {
+func agentArgs(model, prompt string, print bool) []string {
 	args := []string{}
 	if print {
 		args = append(args, "-p", "--force", "--trust", "--approve-mcps")
+	}
+	if model != "" {
+		args = append(args, "--model", model)
 	}
 	args = append(args, prompt)
 	return args
@@ -267,6 +365,28 @@ func Prompt(action string, issue model.IssueView) (string, error) {
 	default:
 		return "", fmt.Errorf("%w: unknown action", ErrInvalid)
 	}
+}
+
+func ParseModels(out string) []string {
+	seen := map[string]bool{}
+	var models []string
+	for _, line := range strings.Split(out, "\n") {
+		line = strings.TrimSpace(line)
+		line = strings.TrimPrefix(line, "- ")
+		line = strings.TrimPrefix(line, "* ")
+		if i := strings.Index(line, " ("); i > 0 {
+			line = strings.TrimSpace(line[:i])
+		}
+		if line == "" || strings.HasSuffix(line, ":") || strings.Contains(line, " ") || !modelOK(line) || seen[line] {
+			continue
+		}
+		seen[line] = true
+		models = append(models, line)
+	}
+	if models == nil {
+		models = []string{}
+	}
+	return models
 }
 
 func modelOK(s string) bool {
