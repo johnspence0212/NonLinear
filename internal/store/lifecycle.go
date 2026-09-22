@@ -435,9 +435,17 @@ func (s *Store) ApproveSpec(specID int) (model.IssueView, error) {
 	if issue.Lifecycle != model.SpecLifecycleDraft && issue.Lifecycle != model.SpecLifecycleApproved {
 		return model.IssueView{}, fmt.Errorf("%w: spec cannot be approved from %s", ErrInvalid, issue.Lifecycle)
 	}
+	now := time.Now().UTC()
 	issue.Lifecycle = model.SpecLifecycleApproved
-	issue.UpdatedAt = time.Now().UTC()
+	issue.UpdatedAt = now
 	s.db.Issues[idx] = issue
+	if issue.DerivedFromArtifactID != nil {
+		if midx, src, ok := s.findIndexLocked(*issue.DerivedFromArtifactID); ok && model.IsMap(src) {
+			src.Lifecycle = model.MapLifecycleReadyForTickets
+			src.UpdatedAt = now
+			s.db.Issues[midx] = src
+		}
+	}
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}

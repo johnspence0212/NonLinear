@@ -51,13 +51,14 @@ type CreateIssue struct {
 }
 
 type UpdateIssue struct {
-	Title    *string
-	Body     *string
-	Labels   *[]string
-	State    *string
-	Assignee *string // pointer to "" unassigns
-	ParentID **int   // pointer to nil pointer clears parent
-	Project  *string
+	Title     *string
+	Body      *string
+	Labels    *[]string
+	State     *string
+	Assignee  *string // pointer to "" unassigns
+	ParentID  **int   // pointer to nil pointer clears parent
+	Project   *string
+	Lifecycle *string
 }
 
 func Open(path string) (*Store, error) {
@@ -668,6 +669,17 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 			project = model.DefaultProject
 		}
 		issue.Project = project
+	}
+	if in.Lifecycle != nil {
+		life := strings.TrimSpace(*in.Lifecycle)
+		if !model.IsMap(issue) {
+			return model.IssueView{}, fmt.Errorf("%w: lifecycle can only be set on a map", ErrInvalid)
+		}
+		if !model.ValidMapLifecycle(life) {
+			return model.IssueView{}, fmt.Errorf("%w: unknown map lifecycle %s", ErrInvalid, life)
+		}
+		issue.Lifecycle = life
+		issue.Kind = model.KindDecisionMap
 	}
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue

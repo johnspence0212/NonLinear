@@ -144,6 +144,13 @@ func TestLifecycleTransitions(t *testing.T) {
 	if approved.Lifecycle != model.SpecLifecycleApproved {
 		t.Fatalf("approve: %s", approved.Lifecycle)
 	}
+	afterApprove, err := s.Get(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if afterApprove.Lifecycle != model.MapLifecycleReadyForTickets {
+		t.Fatalf("map after approve: %s", afterApprove.Lifecycle)
+	}
 	plan, err := s.CreatePlan(spec.ID)
 	if err != nil {
 		t.Fatal(err)
@@ -207,6 +214,25 @@ func TestDerivedStageTable(t *testing.T) {
 				return *m.ProjectID
 			},
 			want: model.StageSpecReview,
+		},
+		{
+			name: "ready_for_tickets from map",
+			setup: func(s *Store) int {
+				p, err := s.CreateProject(CreateProject{Title: "Proj"})
+				if err != nil {
+					t.Fatal(err)
+				}
+				m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
+				if err != nil {
+					t.Fatal(err)
+				}
+				life := model.MapLifecycleReadyForTickets
+				if _, err := s.Update(m.ID, UpdateIssue{Lifecycle: &life}); err != nil {
+					t.Fatal(err)
+				}
+				return p.ID
+			},
+			want: model.StageReadyForTickets,
 		},
 		{
 			name: "ready_for_tickets no plan",

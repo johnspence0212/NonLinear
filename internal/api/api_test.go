@@ -369,6 +369,28 @@ func TestAdvanceToSpecHTTP(t *testing.T) {
 	}
 }
 
+func TestPatchMapLifecycleHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	m := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Decision map",
+		"labels": []string{"wayfinder:map"},
+	})
+	got := patchJSON(t, mux, "/api/issues/"+itoa(m["id"]), map[string]any{"lifecycle": "ready_for_tickets"})
+	if got["lifecycle"] != "ready_for_tickets" {
+		t.Fatalf("lifecycle: %v", got)
+	}
+	back := patchJSON(t, mux, "/api/issues/"+itoa(m["id"]), map[string]any{"lifecycle": "ready_for_spec"})
+	if back["lifecycle"] != "ready_for_spec" {
+		t.Fatalf("lifecycle: %v", back)
+	}
+}
+
 func TestMoveAndDeleteProjectHTTP(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

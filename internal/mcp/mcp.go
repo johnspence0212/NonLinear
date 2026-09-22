@@ -96,12 +96,15 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_issue",
-		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map or plan (implementation tickets belong to the plan id). Use this to append a line to a Wayfinder map body (Decisions so far).",
+		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map or plan (implementation tickets belong to the plan id). On a Decision Map, set lifecycle to active, ready_for_spec, ready_for_tickets, cleared, or archived to adjust readiness. Use this to append a line to a Wayfinder map body (Decisions so far).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, any, error) {
 		up := store.UpdateIssue{
 			Title:   optString(in.Title),
 			Body:    in.Body,
 			Project: optString(in.Project),
+		}
+		if in.Lifecycle != "" {
+			up.Lifecycle = &in.Lifecycle
 		}
 		if in.Labels != nil {
 			up.Labels = &in.Labels
@@ -248,14 +251,14 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6.",
+		Description: "List Projects (grouping parent of Decision Maps, Spec, and Plan). A Project is a grouping, not a status. Returns {projects:[...]} with a derived stage for agents. Readiness (ready_for_spec / ready_for_tickets) is edited on the map. A Project identifier looks like P-6 and can coexist with NL-6.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
 		return textResult(map[string]any{"projects": st.ListProjects()})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project",
-		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, and Decision Map / Spec / Plan summaries.",
+		Description: "Fetch one Project by id. A Project is a grouping. Returns destination, optional repo (folder Cursor uses), Decision Map / Spec / Plan summaries, and a derived stage for agents. Edit ready_for_spec / ready_for_tickets on the map.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.GetProject(in.ID)
 		if err != nil {
@@ -434,6 +437,7 @@ type updateInput struct {
 	ParentID    *int     `json:"parentId,omitempty"`
 	ClearParent bool     `json:"clearParent,omitempty"`
 	Project     string   `json:"project,omitempty"`
+	Lifecycle   string   `json:"lifecycle,omitempty" jsonschema:"map readiness only: active, ready_for_spec, ready_for_tickets, cleared, archived"`
 }
 
 type commentInput struct {

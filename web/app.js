@@ -140,6 +140,33 @@ function stamp(label, kind = "") {
   return `<span class="stamp ${kind}">${esc(label)}</span>`;
 }
 
+const MAP_STATUSES = [
+  { value: "active", label: "wayfinding" },
+  { value: "ready_for_spec", label: "ready for spec" },
+  { value: "ready_for_tickets", label: "ready for tickets" },
+  { value: "cleared", label: "cleared" },
+  { value: "archived", label: "archived" },
+];
+
+function mapStatusValue(life) {
+  return life || "active";
+}
+
+function mapStatusLabel(life) {
+  const v = mapStatusValue(life);
+  const found = MAP_STATUSES.find((s) => s.value === v);
+  return found ? found.label : v.replaceAll("_", " ");
+}
+
+function mapStatusSelect(life) {
+  const current = mapStatusValue(life);
+  const opts = MAP_STATUSES.map((s) => {
+    const on = s.value === current ? " selected" : "";
+    return `<option value="${esc(s.value)}"${on}>${esc(s.label)}</option>`;
+  }).join("");
+  return `<label class="edit-label">status<select id="edit-lifecycle">${opts}</select></label>`;
+}
+
 function statusStamp(issue, lg = "") {
   const size = lg ? ` ${lg}` : "";
   const k = takeability(issue);
@@ -541,7 +568,7 @@ function mapRowHTML(map, selected = false, nav = false) {
   return `<div class="row map-row ${selected ? "selected" : ""}" ${nav ? "data-nav" : ""} data-id="${map.id}">
     <span class="map-mark">map</span>
     <a class="title" href="#/map/${map.id}">${esc(map.title)}</a>
-    <span class="meta">${tagButtons(map.labels)}</span>
+    <span class="meta">${stamp(mapStatusLabel(map.lifecycle), "open")}</span>
     <span class="mark">${open} open · ${done} done</span>
   </div>
   <div class="progress"><i style="width:${pct}%"></i></div>`;
@@ -892,7 +919,7 @@ async function renderMap(id) {
     ${flash()}
     ${projectCrumb(map)}
     ${box(
-      `<strong>${esc(map.identifier)}</strong>${stamp(life, map.state === "closed" ? "closed lg" : "open lg")}`,
+      `<strong>${esc(map.identifier)}</strong>${stamp(mapStatusLabel(life), map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(map.title)}</h1>
         <div class="chips">${tagButtons(map.labels) || `<span class="muted">no tags</span>`}</div>
@@ -939,7 +966,7 @@ async function renderMap(id) {
 function projectCrumb(issue) {
   const p = issue.projectRef;
   if (!p) return "";
-  return `<div class="hint"><a href="#/project/${p.id}">${esc(p.identifier)}</a> ${esc(p.title)} · ${esc(p.stage || "")}</div>`;
+  return `<div class="hint"><a href="#/project/${p.id}">${esc(p.identifier)}</a> ${esc(p.title)}</div>`;
 }
 
 function artifactRowHTML(issue) {
@@ -987,7 +1014,7 @@ async function renderProject(id) {
   main.innerHTML = `
     ${flash()}
     ${box(
-      `<strong>${esc(project.identifier)}</strong>${stamp(project.stage || "wayfinding", "open lg")}`,
+      `<strong>${esc(project.identifier)}</strong>`,
       `<div class="box-b pad" id="project-head">
         <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
@@ -1012,7 +1039,6 @@ async function renderProject(id) {
     box(
       "<strong>this project</strong>",
       railLines([
-        ["stage", project.stage || ""],
         ["repo", repo || "server default"],
         ["maps", (project.maps || []).length],
         ["specs", (project.specs || []).length],
@@ -1395,7 +1421,9 @@ function parseTags(raw) {
 }
 
 function editFormHTML(issue) {
+  const status = isMap(issue) ? mapStatusSelect(issue.lifecycle) : "";
   return `<label class="edit-label">title<input id="edit-title" value="${esc(issue.title).replaceAll('"', "&quot;")}" /></label>
+  ${status}
   <label class="edit-label">tags<input id="edit-labels" value="${esc(formatTags(issue.labels)).replaceAll('"', "&quot;")}" placeholder="space or comma · # optional" /></label>
   <label class="edit-label">body<textarea id="edit-body">${esc(issue.body || "")}</textarea></label>
   <div class="actions"><button data-save>save</button><button data-cancel>cancel</button></div>`;
@@ -1410,8 +1438,11 @@ function bindEditForm(issue) {
     const body = main.querySelector("#edit-body").value;
     const labels = parseTags(main.querySelector("#edit-labels")?.value || "");
     if (!title) return;
+    const payload = { title, body, labels };
+    const life = main.querySelector("#edit-lifecycle")?.value;
+    if (life) payload.lifecycle = life;
     try {
-      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body, labels }) });
+      await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify(payload) });
       await paint();
     } catch (err) {
       state.error = err.message;

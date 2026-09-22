@@ -4,9 +4,9 @@ Local JSON issue tracker. Agents are the primary user.
 
 ## Glossary
 
-**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, and Implementation Plan. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
+**Project** — parent entity (`P-{id}`). A grouping for Decision Maps, Spec, and Implementation Plan. Sibling maps belong here; that is the grouping, not linked-map edges. A Project has no tags and no stored status. Stage is still derived for agents, never persisted, and is not shown as a project tag. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
 
-**Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`). A Project can have several maps.
+**Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`). A Project can have several maps. Map `lifecycle` is the readiness you edit: `active` (wayfinding), `ready_for_spec`, `ready_for_tickets`, `cleared`, `archived`.
 
 **Linked maps** — optional bidirectional edges (`linkedMaps`). They do not nest, group, or cascade. The map UI does not show them. Related maps share a `projectId`.
 
@@ -14,9 +14,9 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Plan** — an issue with `kind=plan`, derived from an approved spec. Lifecycle: `draft` → `active` → `delivered`. Implementation tickets are children of the plan. Open at `#/plan/{id}`.
 
-**Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`.
+**Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`. Returned on Project for agents. Not a project tag.
 
-**Tags** — classification only (`wayfinder:*`, triage, catalog). They do not encode lifecycle or stage.
+**Tags** — classification only (`wayfinder:*`, triage, catalog) on issues. They do not encode lifecycle or stage. Projects have none.
 
 **Frontier** — open + unblocked + unclaimed tickets that are not a map, spec, or plan.
 
@@ -34,9 +34,9 @@ Explicit. Not inferred from “zero open tickets”. MCP lifecycle actions do no
 
 The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `agent models` and stores the chosen one. A Project can set an optional `repo` (the folder Cursor uses for that project). Otherwise the git root of the directory NonLinear was started in is the default. The footer shows the repo in play. **to spec** on a map runs `/to-spec`. **to plan** on a map runs `/to-tickets`. **approve spec** approves, then runs `/to-tickets`. An open unblocked ticket can be **sent to cursor**.
 
-1. Map **ready for spec** → map `ready_for_spec`
+1. Map **ready for spec** → map `ready_for_spec` (or set map `lifecycle` via `update_issue` / edit map)
 2. **Create spec** → draft spec, empty to-spec skeleton, destination copied from the map if present
-3. **Approve spec** → spec `approved`
+3. **Approve spec** → spec `approved`, source map `ready_for_tickets`
 4. **Create implementation plan** (approved spec only) → draft plan
 5. **Start implementation** / **mark delivered** → plan `active` / `delivered`
 6. Map **route is clear** → map `cleared` (does not invent a spec)
