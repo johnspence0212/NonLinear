@@ -922,7 +922,7 @@ async function renderMap(id) {
       `<strong>${esc(map.identifier)}</strong>${stamp(mapStatusLabel(life), map.state === "closed" ? "closed lg" : "open lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(map.title)}</h1>
-        <div class="chips">${tagButtons(map.labels) || `<span class="muted">no tags</span>`}</div>`
+        <div class="chips">${tagButtons(map.labels) || `<span class="muted">no tags</span>`}</div>
         <div class="body map-body">${map.body ? renderMarkdown(map.body) : `<span class="muted">empty map body</span>`}</div>
         <div class="actions">${actions}</div>
       </div>`
@@ -1016,7 +1016,7 @@ async function renderProject(id) {
     ${box(
       `<strong>${esc(project.identifier)}</strong>`,
       `<div class="box-b pad" id="project-head">
-        <h1>${esc(project.title)}</h1>`
+        <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
         <p class="muted">${repo ? `repo ${esc(repo)}` : "no repo — send to cursor uses the server default"}</p>
         <div class="actions">${move}<button type="button" data-act="edit">edit</button><button type="button" data-act="delete" class="danger">delete project</button></div>
