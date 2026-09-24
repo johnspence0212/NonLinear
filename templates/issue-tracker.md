@@ -57,6 +57,8 @@ A **Project** (`P-{id}`) parents Decision Maps → Spec → Tickets. Sibling map
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
 - **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this to put a standalone map onto a Project.
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.
+- **Export a Project**: `export_project` with the project `id`. Returns a `nonlinear.project` JSON bundle (Project + maps, specs, Tickets lists, child tickets, comments, in-project `blockedBy` / `linkedMaps` / `derivedFromArtifactId`). Edges that pointed outside the project are dropped.
+- **Import a Project**: `import_project` with that bundle. Creates a new Project, allocates new issue ids, and remaps parent / blocked-by / linked-map / derived-from edges. A repo path that is not a directory on this machine is dropped. Importing twice creates two projects.
 - **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.
 - **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.
 - **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Fill the SPEC body via `/to-spec`, not the map.

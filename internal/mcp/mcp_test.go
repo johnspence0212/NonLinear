@@ -658,6 +658,85 @@ func TestMCPProjectRepo(t *testing.T) {
 	}
 }
 
+func TestMCPProjectExportImport(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Ship", "destination": "A tracker."},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if created.IsError {
+		t.Fatalf("%v", created.Content)
+	}
+	project := toolJSON(t, created)
+	pid := int(project["id"].(float64))
+
+	mapCreated, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_issue",
+		Arguments: map[string]any{
+			"title":     "Map",
+			"labels":    []string{"wayfinder:map"},
+			"projectId": pid,
+		},
+	})
+	if err != nil || mapCreated.IsError {
+		t.Fatalf("create map: %v %v", err, mapCreated)
+	}
+
+	exported, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "export_project",
+		Arguments: map[string]any{"id": pid},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if exported.IsError {
+		t.Fatalf("%v", exported.Content)
+	}
+	bundle := toolJSON(t, exported)
+	if bundle["kind"] != "nonlinear.project" {
+		t.Fatalf("export: %v", bundle)
+	}
+
+	imported, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "import_project",
+		Arguments: bundle,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if imported.IsError {
+		t.Fatalf("%v", imported.Content)
+	}
+	importedPayload := toolJSON(t, imported)
+	got, ok := importedPayload["project"].(map[string]any)
+	if !ok || got["id"] == project["id"] {
+		t.Fatalf("import: %v", importedPayload)
+	}
+	if got["title"] != "Ship" {
+		t.Fatalf("title: %v", got)
+	}
+}
+
 func toolJSON(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(res.StructuredContent)

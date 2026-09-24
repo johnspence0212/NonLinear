@@ -95,6 +95,8 @@ Wayfinder operations on this tracker:
 | Resolve | `resolve_issue`, then `update_issue` on the map |
 | Export a map | `export_map` |
 | Import a map | `import_map` |
+| Export a Project | `export_project` |
+| Import a Project | `import_project` |
 | Add a map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Optional map-to-map edge | `set_linked_maps` (does not group; map UI does not show it) |
 
@@ -110,6 +112,8 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 | Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
+| Export a Project | `export_project` |
+| Import a Project | `import_project` |
 | Map ready for spec | `ready_for_spec` |
 | Create spec (empty to-spec skeleton; does not run `/to-spec`) | `create_spec` |
 | Make the spec in one step (ready + draft spec) | `advance_to_spec` |
@@ -121,9 +125,9 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `advance_to_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `export_project`, `import_project`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `advance_to_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
-`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
+`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; export a Project from the project view. Import a `.nlmap.json` or `.nlproject.json` from maps, projects, home, or settings.
 
 ## Views
 
@@ -132,7 +136,7 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | View | Shows |
 | --- | --- |
 | `home` | Stats strip, then collapsible **projects**, **maps**, and **frontier** (open/unclaimed tickets grouped by map) |
-| `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
+| `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Import a `.nlproject.json`. Open `#/project/{id}` |
 | `maps` | Wayfinder maps only (with a new-map box and import) |
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
 | `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
@@ -140,11 +144,11 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 | `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows; compose another map onto this Project |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
 | `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
-| `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
+| `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map or project file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
 
-Export a map from the map view (map + tickets + comments + in-map blockers) as a `.nlmap.json` file. Import that file from **maps**, **home**, or **settings** — ids are remapped so it lands as a new map, even on the same tracker.
+Export a map from the map view (map + tickets + comments + in-map blockers) as a `.nlmap.json` file. Export a Project from the project view (Project + maps + specs + Tickets + comments + in-project edges) as a `.nlproject.json` file. Import either file from **maps**, **projects**, **home**, or **settings** — ids are remapped so it lands as a new map or Project, even on the same tracker.
 
 The header search (`/`) matches identifier, title, and body across maps and tickets, split into maps + tickets-by-map boxes.
 

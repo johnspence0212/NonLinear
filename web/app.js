@@ -605,7 +605,7 @@ function renderList() {
   if (state.filter === "projects") {
     const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
     main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-      `<strong>projects</strong><span>decision map → spec → tickets</span>`,
+      `<strong>projects</strong><button type="button" data-import>import</button>`,
       rows || `<div class="empty">no projects — compose one or create a map</div>`,
       composeBar("new project", "compose", "project")
     )}`;
@@ -733,7 +733,7 @@ async function renderHome() {
     ${foldBox(
       "projects",
       "projects",
-      `<span class="box-actions"><a href="#/" data-jump="projects">open projects view</a></span>`,
+      `<span class="box-actions"><button type="button" data-import>import</button><a href="#/" data-jump="projects">open projects view</a></span>`,
       projectList.map((p) => projectRowHTML(p)).join("") || `<div class="empty">no projects</div>`,
       composeBar("new project", "compose-project", "project")
     )}
@@ -1003,7 +1003,7 @@ async function renderProject(id) {
         <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
         <p class="muted">${repo ? `repo ${esc(repo)}` : "no repo — send to cursor uses the server default"}</p>
-        <div class="actions">${move}<button type="button" data-act="edit">edit</button><button type="button" data-act="delete" class="danger">delete project</button></div>
+        <div class="actions">${move}<button type="button" data-act="edit">edit</button><button type="button" data-act="export">export</button><button type="button" data-act="delete" class="danger">delete project</button></div>
       </div>`
     )}
     ${box(
@@ -1034,6 +1034,17 @@ async function renderProject(id) {
   const edit = main.querySelector("[data-act=edit]");
   if (edit) {
     edit.addEventListener("click", () => startProjectEdit(project));
+  }
+  const exp = main.querySelector("[data-act=export]");
+  if (exp) {
+    exp.addEventListener("click", async () => {
+      try {
+        await downloadProject(project);
+      } catch (err) {
+        state.error = err.message;
+        await renderProject(project.id);
+      }
+    });
   }
   const del = main.querySelector("[data-act=delete]");
   if (del) {
@@ -1500,11 +1511,8 @@ function slugTitle(title) {
     .replace(/-+$/g, "");
 }
 
-async function downloadMap(issue) {
-  const bundle = await api(`/api/issues/${issue.id}/export`);
-  const slug = slugTitle(issue.title);
-  const name = `${issue.identifier}${slug ? "-" + slug : ""}.nlmap.json`;
-  const blob = new Blob([JSON.stringify(bundle, null, 2) + "\n"], { type: "application/json" });
+function downloadJSON(name, data) {
+  const blob = new Blob([JSON.stringify(data, null, 2) + "\n"], { type: "application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
@@ -1513,11 +1521,27 @@ async function downloadMap(issue) {
   URL.revokeObjectURL(url);
 }
 
-async function importMapFile(file) {
+async function downloadMap(issue) {
+  const bundle = await api(`/api/issues/${issue.id}/export`);
+  const slug = slugTitle(issue.title);
+  downloadJSON(`${issue.identifier}${slug ? "-" + slug : ""}.nlmap.json`, bundle);
+}
+
+async function downloadProject(project) {
+  const bundle = await api(`/api/projects/${project.id}/export`);
+  const slug = slugTitle(project.title);
+  downloadJSON(`${project.identifier}${slug ? "-" + slug : ""}.nlproject.json`, bundle);
+}
+
+async function importBundleFile(file) {
   const bundle = JSON.parse(await file.text());
   const result = await api("/api/import", { method: "POST", body: JSON.stringify(bundle) });
   state.error = "";
-  location.hash = `#/map/${result.map.id}`;
+  if (result.project && result.project.id) {
+    location.hash = `#/project/${result.project.id}`;
+  } else {
+    location.hash = `#/map/${result.map.id}`;
+  }
   await paint();
 }
 
@@ -1771,7 +1795,7 @@ async function renderSettings() {
       <p class="muted">models come from the cursor cli. default repo is where nonlinear was started. a project can set its own.</p>
       <p class="settings-warn">wipe deletes every issue. next create is NL-1. this cannot be undone.</p>
       <div class="actions">
-        <button type="button" data-import-map>import map</button>
+        <button type="button" data-import>import</button>
         <button type="button" id="wipe" class="danger">wipe database</button>
       </div>
     </div>`
@@ -1862,7 +1886,7 @@ $("#import-map-file").addEventListener("change", async (e) => {
   e.target.value = "";
   if (!file) return;
   try {
-    await importMapFile(file);
+    await importBundleFile(file);
   } catch (err) {
     state.error = err.message;
     await paint();
@@ -1876,7 +1900,7 @@ main.addEventListener("click", (e) => {
 });
 
 document.getElementById("app").addEventListener("click", (e) => {
-  const importBtn = e.target.closest("[data-import-map]");
+  const importBtn = e.target.closest("[data-import-map], [data-import]");
   if (importBtn) {
     e.preventDefault();
     const input = $("#import-map-file");

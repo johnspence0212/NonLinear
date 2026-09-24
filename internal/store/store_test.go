@@ -571,6 +571,326 @@ func TestImportMapRejectsBadBundle(t *testing.T) {
 	}
 }
 
+func TestExportProjectIncludesArtifactsAndDropsExternalEdges(t *testing.T) {
+	s := testStore(t)
+	p, err := s.CreateProject(CreateProject{Title: "Ship tracker", Destination: "A local tracker."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := s.Create(CreateIssue{Title: "Chart the destination", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nA tracker.\n", ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := s.CreateProject(CreateProject{Title: "Other"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsideMap, err := s.Create(CreateIssue{Title: "Other map", Labels: []string{"wayfinder:map"}, ProjectID: &other.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	outsideTicket, err := s.Create(CreateIssue{Title: "Outside ticket"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	a, err := s.Create(CreateIssue{Title: "What store?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "How to expose MCP?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetBlockedBy(b.ID, []int{a.ID, outsideTicket.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetLinkedMaps(m.ID, []int{outsideMap.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AddComment(a.ID, "cursor", "JSON on disk."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.AdvanceToSpec(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := s.EnsureSpec(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.ApproveSpec(spec.ID); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := s.CreatePlan(spec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planID := plan.ID
+	if _, err := s.Create(CreateIssue{Title: "Write the store", ParentID: &planID}); err != nil {
+		t.Fatal(err)
+	}
+
+	bundle, err := s.ExportProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Kind != model.ProjectBundleKind || bundle.Version != model.ProjectBundleVersion {
+		t.Fatalf("header: %+v", bundle)
+	}
+	if bundle.Project.ID != p.ID || bundle.Project.Title != "Ship tracker" {
+		t.Fatalf("project: %+v", bundle.Project)
+	}
+	if bundle.Filename() != "P-1-ship-tracker.nlproject.json" {
+		t.Fatalf("filename %s", bundle.Filename())
+	}
+	if len(bundle.Issues) != 6 {
+		t.Fatalf("issues %d", len(bundle.Issues))
+	}
+	byID := map[int]model.Issue{}
+	for _, issue := range bundle.Issues {
+		byID[issue.ID] = issue
+		if issue.ProjectID == nil || *issue.ProjectID != p.ID {
+			t.Fatalf("projectId %v want %d", issue.ProjectID, p.ID)
+		}
+	}
+	gotB := byID[b.ID]
+	if len(gotB.BlockedBy) != 1 || gotB.BlockedBy[0] != a.ID {
+		t.Fatalf("external blocker should be dropped: %v", gotB.BlockedBy)
+	}
+	if len(byID[m.ID].LinkedMaps) != 0 {
+		t.Fatalf("external linked map should be dropped: %v", byID[m.ID].LinkedMaps)
+	}
+	if len(byID[a.ID].Comments) != 1 {
+		t.Fatalf("comments: %+v", byID[a.ID].Comments)
+	}
+	gotSpec := byID[spec.ID]
+	if gotSpec.Kind != model.KindSpec || gotSpec.DerivedFromArtifactID == nil || *gotSpec.DerivedFromArtifactID != m.ID {
+		t.Fatalf("spec: %+v", gotSpec)
+	}
+	gotPlan := byID[plan.ID]
+	if gotPlan.Kind != model.KindPlan || gotPlan.DerivedFromArtifactID == nil || *gotPlan.DerivedFromArtifactID != spec.ID {
+		t.Fatalf("plan: %+v", gotPlan)
+	}
+	if _, err := s.ExportProject(99); err == nil {
+		t.Fatal("export of missing project should fail")
+	}
+}
+
+func TestImportProjectRemapsIDsAndPreservesGraph(t *testing.T) {
+	src := testStore(t)
+	p, err := src.CreateProject(CreateProject{Title: "Ship tracker", Destination: "A local tracker."})
+	if err != nil {
+		t.Fatal(err)
+	}
+	m, err := src.Create(CreateIssue{Title: "Chart the destination", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nA tracker.\n", ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	a, err := src.Create(CreateIssue{Title: "What store?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := src.Create(CreateIssue{Title: "How to expose MCP?", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.SetBlockedBy(b.ID, []int{a.ID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.Resolve(a.ID, "cursor", "JSON file with atomic writes."); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.AdvanceToSpec(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := src.EnsureSpec(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.ApproveSpec(spec.ID); err != nil {
+		t.Fatal(err)
+	}
+	plan, err := src.CreatePlan(spec.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	planID := plan.ID
+	if _, err := src.Create(CreateIssue{Title: "Write the store", ParentID: &planID}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.SetLinkedMaps(m.ID, []int{}); err != nil {
+		t.Fatal(err)
+	}
+	second, err := src.Create(CreateIssue{Title: "Second session", Labels: []string{"wayfinder:map"}, ProjectID: &p.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := src.SetLinkedMaps(m.ID, []int{second.ID}); err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := src.ExportProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	dst := testStore(t)
+	existing, err := dst.CreateProject(CreateProject{Title: "Already here"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := dst.Create(CreateIssue{Title: "Noise"}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := dst.ImportProject(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Project.ID == p.ID || got.Project.ID == existing.ID {
+		t.Fatalf("imported project should get a new id, got %d", got.Project.ID)
+	}
+	if got.Project.Title != "Ship tracker" || got.Project.Destination != "A local tracker." {
+		t.Fatalf("project: %+v", got.Project)
+	}
+	if got.Project.Identifier != "P-2" {
+		t.Fatalf("identifier %s", got.Project.Identifier)
+	}
+	if len(got.Created) != 7 {
+		t.Fatalf("created %v", got.Created)
+	}
+	if len(got.Project.Maps) != 2 || len(got.Project.Specs) != 1 || len(got.Project.Plans) != 1 {
+		t.Fatalf("artifacts maps=%d specs=%d plans=%d", len(got.Project.Maps), len(got.Project.Specs), len(got.Project.Plans))
+	}
+
+	var chart, secondMap model.IssueView
+	for _, item := range got.Project.Maps {
+		switch item.Title {
+		case "Chart the destination":
+			chart = item
+		case "Second session":
+			secondMap = item
+		}
+	}
+	if chart.ID == 0 || secondMap.ID == 0 {
+		t.Fatalf("maps: %+v", got.Project.Maps)
+	}
+	if chart.ProjectID == nil || *chart.ProjectID != got.Project.ID {
+		t.Fatalf("map projectId %v want %d", chart.ProjectID, got.Project.ID)
+	}
+	if len(chart.Linked) != 1 || chart.Linked[0].ID != secondMap.ID {
+		t.Fatalf("linked maps remapped: %+v", chart.Linked)
+	}
+	kids := dst.List(ListFilter{ParentID: &chart.ID})
+	var storeQ, mcpQ model.IssueView
+	for _, k := range kids {
+		switch k.Title {
+		case "What store?":
+			storeQ = k
+		case "How to expose MCP?":
+			mcpQ = k
+		}
+	}
+	if storeQ.ID == 0 || mcpQ.ID == 0 {
+		t.Fatalf("kids: %+v", kids)
+	}
+	if storeQ.State != model.StateClosed || len(storeQ.Comments) != 1 {
+		t.Fatalf("resolved ticket: %+v", storeQ)
+	}
+	if len(mcpQ.BlockedBy) != 1 || mcpQ.BlockedBy[0] != storeQ.ID {
+		t.Fatalf("blockedBy remapped: %v want %d", mcpQ.BlockedBy, storeQ.ID)
+	}
+	specView := got.Project.Specs[0]
+	if specView.DerivedFromArtifactID == nil || *specView.DerivedFromArtifactID != chart.ID {
+		t.Fatalf("spec derivedFrom: %+v want map %d", specView.DerivedFromArtifactID, chart.ID)
+	}
+	planView := got.Project.Plans[0]
+	if planView.DerivedFromArtifactID == nil || *planView.DerivedFromArtifactID != specView.ID {
+		t.Fatalf("plan derivedFrom: %+v want spec %d", planView.DerivedFromArtifactID, specView.ID)
+	}
+	planKids := dst.List(ListFilter{ParentID: &planView.ID})
+	if len(planKids) != 1 || planKids[0].Title != "Write the store" {
+		t.Fatalf("plan kids: %+v", planKids)
+	}
+
+	again, err := dst.ImportProject(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.Project.ID == got.Project.ID {
+		t.Fatal("second import should create another project")
+	}
+	if dst.Count() != 1+7+7 {
+		t.Fatalf("count %d", dst.Count())
+	}
+}
+
+func TestImportProjectEmptyAndRejectsBadBundle(t *testing.T) {
+	src := testStore(t)
+	p, err := src.CreateProject(CreateProject{Title: "Empty box"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := src.ExportProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bundle.Issues) != 0 {
+		t.Fatalf("empty export: %+v", bundle)
+	}
+	dst := testStore(t)
+	got, err := dst.ImportProject(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Project.Title != "Empty box" || len(got.Created) != 0 {
+		t.Fatalf("empty import: %+v", got)
+	}
+	if _, err := dst.ImportProject(model.ProjectBundle{Kind: "nope", Project: model.Project{Title: "X"}}); err == nil {
+		t.Fatal("expected kind error")
+	}
+	if _, err := dst.ImportProject(model.ProjectBundle{Kind: model.ProjectBundleKind, Version: 99, Project: model.Project{Title: "X"}}); err == nil {
+		t.Fatal("expected version error")
+	}
+	if _, err := dst.ImportProject(model.ProjectBundle{Kind: model.ProjectBundleKind, Version: 1}); err == nil {
+		t.Fatal("expected title error")
+	}
+}
+
+func TestImportProjectDropsMissingRepo(t *testing.T) {
+	src := testStore(t)
+	root := t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, ".git"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	p, err := src.CreateProject(CreateProject{Title: "With repo", Repo: root})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bundle, err := src.ExportProject(p.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bundle.Project.Repo != root {
+		t.Fatalf("exported repo %q", bundle.Project.Repo)
+	}
+	same, err := src.ImportProject(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if same.Project.Repo != root {
+		t.Fatalf("same-machine repo %q want %q", same.Project.Repo, root)
+	}
+	bundle.Project.Repo = filepath.Join(root, "missing-elsewhere")
+	dst := testStore(t)
+	got, err := dst.ImportProject(bundle)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.Project.Repo != "" {
+		t.Fatalf("missing repo should be dropped, got %q", got.Project.Repo)
+	}
+}
+
 func ids(views []model.IssueView) []int {
 	out := make([]int, len(views))
 	for i, v := range views {

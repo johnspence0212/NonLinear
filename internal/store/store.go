@@ -287,6 +287,147 @@ func (s *Store) ImportMap(bundle model.MapBundle) (ImportResult, error) {
 	}, nil
 }
 
+type ImportProjectResult struct {
+	Project model.ProjectView `json:"project"`
+	Created []int             `json:"created"`
+}
+
+// ExportProject returns a portable bundle for a Project and every issue
+// on it (maps, specs, tickets lists, and descendants). Blocked-by,
+// linked-map, and derived-from edges that point outside the project are
+// dropped.
+func (s *Store) ExportProject(id int) (model.ProjectBundle, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p := s.findProjectLocked(id)
+	if p == nil {
+		return model.ProjectBundle{}, fmt.Errorf("%w: project %d", ErrNotFound, id)
+	}
+	keep := map[int]bool{}
+	for _, issue := range s.issuesForProjectLocked(id) {
+		for _, did := range s.descendantsLocked(issue.ID) {
+			keep[did] = true
+		}
+	}
+	issues := make([]model.Issue, 0, len(keep))
+	for _, issue := range s.db.Issues {
+		if !keep[issue.ID] {
+			continue
+		}
+		out := model.CloneIssue(issue)
+		pid := id
+		out.ProjectID = &pid
+		if out.ParentID != nil && !keep[*out.ParentID] {
+			out.ParentID = nil
+		}
+		out.BlockedBy = keepIDs(out.BlockedBy, keep)
+		out.LinkedMaps = keepIDs(out.LinkedMaps, keep)
+		if out.DerivedFromArtifactID != nil && !keep[*out.DerivedFromArtifactID] {
+			out.DerivedFromArtifactID = nil
+		}
+		issues = append(issues, out)
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].ID < issues[j].ID })
+	return model.ProjectBundle{
+		Kind:       model.ProjectBundleKind,
+		Version:    model.ProjectBundleVersion,
+		ExportedAt: time.Now().UTC(),
+		Project:    *p,
+		Issues:     issues,
+	}, nil
+}
+
+// ImportProject copies a project bundle into this tracker with new ids.
+// Existing projects and issues are left alone. Parent, blocked-by,
+// linked-map, and derived-from edges remap within the bundle. A missing
+// local repo path is dropped rather than failing the import. Importing
+// twice creates two projects.
+func (s *Store) ImportProject(bundle model.ProjectBundle) (ImportProjectResult, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	issues, err := validateProjectBundle(bundle)
+	if err != nil {
+		return ImportProjectResult{}, err
+	}
+	sort.Slice(issues, func(i, j int) bool { return issues[i].ID < issues[j].ID })
+	if s.db.NextProjectID < 1 {
+		s.db.NextProjectID = 1
+	}
+	now := time.Now().UTC()
+	newPID := s.db.NextProjectID
+	s.db.NextProjectID++
+	repo := ""
+	if r := strings.TrimSpace(bundle.Project.Repo); r != "" {
+		if resolved, err := resolveRepo(r); err == nil {
+			repo = resolved
+		}
+	}
+	createdAt := bundle.Project.CreatedAt
+	if createdAt.IsZero() {
+		createdAt = now
+	}
+	p := model.Project{
+		ID:          newPID,
+		Identifier:  model.ProjectIdentifier(newPID),
+		Title:       strings.TrimSpace(bundle.Project.Title),
+		Destination: strings.TrimSpace(bundle.Project.Destination),
+		Repo:        repo,
+		CreatedAt:   createdAt,
+		UpdatedAt:   now,
+	}
+	idMap := make(map[int]int, len(issues))
+	for _, old := range issues {
+		idMap[old.ID] = s.db.NextID
+		s.db.NextID++
+	}
+	imported := make([]model.Issue, 0, len(issues))
+	created := make([]int, 0, len(issues))
+	for _, old := range issues {
+		issue := model.CloneIssue(old)
+		issue.ID = idMap[old.ID]
+		issue.Identifier = fmt.Sprintf("%s-%d", s.db.Prefix, issue.ID)
+		issue.ProjectID = &newPID
+		if issue.ParentID != nil {
+			if nid, ok := idMap[*issue.ParentID]; ok && nid != issue.ID {
+				issue.ParentID = &nid
+			} else {
+				issue.ParentID = nil
+			}
+		}
+		issue.BlockedBy = remapIDList(issue.BlockedBy, idMap, issue.ID)
+		issue.LinkedMaps = remapIDList(issue.LinkedMaps, idMap, issue.ID)
+		if issue.DerivedFromArtifactID != nil {
+			if nid, ok := idMap[*issue.DerivedFromArtifactID]; ok && nid != issue.ID {
+				issue.DerivedFromArtifactID = &nid
+			} else {
+				issue.DerivedFromArtifactID = nil
+			}
+		}
+		issue.Comments = remapComments(issue.Comments)
+		if issue.Project == "" {
+			issue.Project = model.DefaultProject
+		}
+		if issue.State != model.StateOpen && issue.State != model.StateClosed {
+			issue.State = model.StateOpen
+		}
+		imported = append(imported, issue)
+		created = append(created, issue.ID)
+	}
+	if parentCycle(imported) {
+		return ImportProjectResult{}, ErrParentCycle
+	}
+	s.db.Projects = append(s.db.Projects, p)
+	s.db.Issues = append(s.db.Issues, imported...)
+	NormalizeDocument(&s.db)
+	if err := s.saveLocked(); err != nil {
+		return ImportProjectResult{}, err
+	}
+	return ImportProjectResult{
+		Project: s.projectViewLocked(*s.findProjectLocked(newPID)),
+		Created: created,
+	}, nil
+}
+
 func (s *Store) descendantsLocked(id int) []int {
 	kids := map[int][]int{}
 	for _, issue := range s.db.Issues {
@@ -327,6 +468,32 @@ func keepIDs(ids []int, keep map[int]bool) []int {
 		if keep[id] {
 			out = append(out, id)
 		}
+	}
+	return out
+}
+
+func remapIDList(ids []int, idMap map[int]int, self int) []int {
+	out := make([]int, 0, len(ids))
+	seen := map[int]bool{}
+	for _, id := range ids {
+		nid, ok := idMap[id]
+		if !ok || nid == self || seen[nid] {
+			continue
+		}
+		seen[nid] = true
+		out = append(out, nid)
+	}
+	return out
+}
+
+func remapComments(comments []model.Comment) []model.Comment {
+	out := make([]model.Comment, 0, len(comments))
+	for _, c := range comments {
+		c.ID = newID()
+		if strings.TrimSpace(c.Author) == "" {
+			c.Author = "cursor"
+		}
+		out = append(out, c)
 	}
 	return out
 }
@@ -373,6 +540,34 @@ func validateMapBundle(bundle model.MapBundle) ([]model.Issue, int, error) {
 		return nil, 0, fmt.Errorf("%w: root %d", ErrNotFound, root)
 	}
 	return issues, root, nil
+}
+
+func validateProjectBundle(bundle model.ProjectBundle) ([]model.Issue, error) {
+	if bundle.Kind != model.ProjectBundleKind {
+		return nil, fmt.Errorf("%w: not a nonlinear project bundle", ErrInvalid)
+	}
+	if bundle.Version != 0 && bundle.Version != model.ProjectBundleVersion {
+		return nil, fmt.Errorf("%w: unsupported project bundle version %d", ErrInvalid, bundle.Version)
+	}
+	if strings.TrimSpace(bundle.Project.Title) == "" {
+		return nil, fmt.Errorf("%w: project title is required", ErrInvalid)
+	}
+	seen := map[int]bool{}
+	issues := make([]model.Issue, 0, len(bundle.Issues))
+	for _, issue := range bundle.Issues {
+		if issue.ID < 1 {
+			return nil, fmt.Errorf("%w: issue id is required", ErrInvalid)
+		}
+		if seen[issue.ID] {
+			return nil, fmt.Errorf("%w: duplicate issue id %d", ErrInvalid, issue.ID)
+		}
+		if strings.TrimSpace(issue.Title) == "" {
+			return nil, fmt.Errorf("%w: title is required", ErrInvalid)
+		}
+		seen[issue.ID] = true
+		issues = append(issues, model.CloneIssue(issue))
+	}
+	return issues, nil
 }
 
 func parentCycle(issues []model.Issue) bool {
