@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	MapBundleKind    = "nonlinear.map"
-	MapBundleVersion = 1
+	MapBundleKind        = "nonlinear.map"
+	MapBundleVersion     = 1
+	ProjectBundleKind    = "nonlinear.project"
+	ProjectBundleVersion = 1
 )
 
 // MapBundle is a portable single-map document: the map issue plus every
@@ -38,6 +40,29 @@ func (b MapBundle) Filename() string {
 		name = "map"
 	}
 	return name + ".nlmap.json"
+}
+
+// ProjectBundle is a portable Project: the Project record plus every
+// issue on it (maps, specs, tickets lists, child tickets) and comments.
+// IDs inside the bundle are local to the file; importers allocate new
+// tracker and project ids.
+type ProjectBundle struct {
+	Kind       string    `json:"kind"`
+	Version    int       `json:"version"`
+	ExportedAt time.Time `json:"exportedAt"`
+	Project    Project   `json:"project"`
+	Issues     []Issue   `json:"issues"`
+}
+
+func (b ProjectBundle) Filename() string {
+	name := b.Project.Identifier
+	if name == "" {
+		name = "project"
+	}
+	if slug := SlugTitle(b.Project.Title); slug != "" {
+		name += "-" + slug
+	}
+	return name + ".nlproject.json"
 }
 
 func SlugTitle(title string) string {

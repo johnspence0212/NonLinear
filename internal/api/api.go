@@ -27,6 +27,7 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects", h.createProject)
 	mux.HandleFunc("POST /api/projects/move", h.moveToProject)
 	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
+	mux.HandleFunc("GET /api/projects/{id}/export", h.exportProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", h.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
 	mux.HandleFunc("GET /api/issues", h.list)
@@ -449,8 +450,34 @@ func (h *Handler) exportMap(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) importMap(w http.ResponseWriter, r *http.Request) {
+	var raw json.RawMessage
+	if !decode(w, r, &raw) {
+		return
+	}
+	var header struct {
+		Kind string `json:"kind"`
+	}
+	if err := json.Unmarshal(raw, &header); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
+		return
+	}
+	if header.Kind == model.ProjectBundleKind {
+		var bundle model.ProjectBundle
+		if err := json.Unmarshal(raw, &bundle); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid json")
+			return
+		}
+		result, err := h.Store.ImportProject(bundle)
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusCreated, result)
+		return
+	}
 	var bundle model.MapBundle
-	if !decode(w, r, &bundle) {
+	if err := json.Unmarshal(raw, &bundle); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid json")
 		return
 	}
 	result, err := h.Store.ImportMap(bundle)
@@ -459,6 +486,21 @@ func (h *Handler) importMap(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusCreated, result)
+}
+
+func (h *Handler) exportProject(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	bundle, err := h.Store.ExportProject(id)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	name := strings.ReplaceAll(bundle.Filename(), `"`, "")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	writeJSON(w, http.StatusOK, bundle)
 }
 
 func (h *Handler) wipe(w http.ResponseWriter, r *http.Request) {

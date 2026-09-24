@@ -42,5 +42,7 @@ The UI can hand work to the Cursor CLI (`agent`). Settings lists models from `ag
 6. Map **route is clear** → map `cleared` (does not invent a spec)
 7. **Move to project** → set `projectId` on an issue and descendants, or on every issue currently on a source Project
 8. **Delete project** → remove the Project and every issue on it
+9. **Export project** → portable `nonlinear.project` bundle (Project + maps, specs, tickets, comments, in-project edges)
+10. **Import project** → new Project + remapped ids (does not overwrite)
 
 `advance_to_spec` combines 1+2 in one call: marks the map ready and creates the draft spec. Prefer it for "make the spec". `advance_to_plan` creates that map's spec if needed, approves it, and creates a new plan. A second map does not inherit another map's spec or plan.

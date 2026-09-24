@@ -169,6 +169,72 @@ func TestMapExportImport(t *testing.T) {
 	}
 }
 
+func TestProjectExportImport(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	p := postJSON(t, mux, "/api/projects", map[string]any{"title": "Ship", "destination": "A tracker."})
+	m := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":     "Find the way",
+		"labels":    []string{"wayfinder:map"},
+		"body":      "## Destination\n\nA tracker.\n",
+		"projectId": p["id"],
+	})
+	parentID := int(m["id"].(float64))
+	a := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "What store?",
+		"parentId": parentID,
+	})
+	b := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "How to expose MCP?",
+		"parentId": parentID,
+	})
+	putJSON(t, mux, "/api/issues/"+itoa(b["id"])+"/blocked-by", map[string]any{
+		"issueIds": []any{a["id"]},
+	})
+	spec := postJSON(t, mux, "/api/issues/"+itoa(m["id"])+"/advance-to-spec", map[string]any{})
+	if spec["kind"] != "spec" {
+		t.Fatalf("spec: %v", spec)
+	}
+
+	exported := getJSON(t, mux, "/api/projects/"+itoa(p["id"])+"/export")
+	if exported["kind"] != "nonlinear.project" {
+		t.Fatalf("kind: %v", exported)
+	}
+	issues, _ := exported["issues"].([]any)
+	if len(issues) != 4 {
+		t.Fatalf("export issues: %v", exported)
+	}
+	proj, _ := exported["project"].(map[string]any)
+	if proj["title"] != "Ship" {
+		t.Fatalf("project: %v", exported)
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/projects/99/export", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+	if rec.Code != http.StatusNotFound {
+		t.Fatalf("export missing: %d %s", rec.Code, rec.Body.String())
+	}
+
+	imported := postJSON(t, mux, "/api/import", exported)
+	got, _ := imported["project"].(map[string]any)
+	if got["id"] == p["id"] {
+		t.Fatalf("imported project should be new: %v", imported)
+	}
+	if got["title"] != "Ship" {
+		t.Fatalf("title: %v", got)
+	}
+	maps, _ := got["maps"].([]any)
+	if len(maps) != 1 {
+		t.Fatalf("maps: %v", got)
+	}
+}
+
 func TestWipeRequiresConfirm(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

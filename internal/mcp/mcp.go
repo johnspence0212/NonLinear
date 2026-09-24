@@ -233,6 +233,28 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "export_project",
+		Description: "Export one Project and everything on it (Decision Maps, Specs, Tickets lists, child tickets, comments, in-project blocked-by / linked-map / derived-from edges) as a portable JSON bundle (kind nonlinear.project). Use this file with import_project on another tracker.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
+		bundle, err := st.ExportProject(in.ID)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(bundle)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "import_project",
+		Description: "Import a Project JSON bundle from export_project. Creates a new Project, allocates new issue ids, remaps parent / blocked-by / linked-map / derived-from edges, and returns the new Project. A repo path that is not a directory on this machine is dropped. Does not overwrite existing projects; importing twice creates two projects.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in importProjectInput) (*mcp.CallToolResult, any, error) {
+		result, err := st.ImportProject(in.ProjectBundle)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(result)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "wipe_db",
 		Description: "Erase every issue and reset ids so the next create is NL-1. Requires confirm=true. Irreversible.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in wipeInput) (*mcp.CallToolResult, any, error) {
@@ -524,6 +546,10 @@ type moveToProjectInput struct {
 
 type importMapInput struct {
 	model.MapBundle
+}
+
+type importProjectInput struct {
+	model.ProjectBundle
 }
 
 func frontierPayload(issues []model.IssueView) map[string]any {
