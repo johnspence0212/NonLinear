@@ -802,7 +802,12 @@ function eventTime(iso) {
 
 function eventDay(iso) {
   if (!iso) return "";
-  return new Date(iso).toISOString().slice(0, 10);
+  const day = new Date(iso).toISOString().slice(0, 10);
+  const today = new Date().toISOString().slice(0, 10);
+  const yest = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+  if (day === today) return "today";
+  if (day === yest) return "yesterday";
+  return day;
 }
 
 function eventRowsHTML(events) {
@@ -868,7 +873,7 @@ async function renderHome() {
       paint();
     });
   });
-  renderRail(
+  rail.innerHTML =
     (focus
       ? box(
           "<strong>this project</strong>",
@@ -878,16 +883,15 @@ async function renderHome() {
           ])
         )
       : "") +
-      box(
-        "<strong>today</strong>",
-        railLines([
-          ["resolved", today.resolved || 0],
-          ["claimed", today.claimed || 0],
-          ["created", today.created || 0],
-          ["lifecycle", today.lifecycle || 0],
-        ])
-      )
-  );
+    box(
+      "<strong>today</strong>",
+      railLines([
+        ["resolved", today.resolved || 0],
+        ["claimed", today.claimed || 0],
+        ["created", today.created || 0],
+        ["lifecycle", today.lifecycle || 0],
+      ])
+    );
   syncChrome();
 }
 
