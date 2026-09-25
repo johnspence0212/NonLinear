@@ -1,0 +1,141 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>activity feed · nonlinear</title>
+    <script>
+      document.documentElement.dataset.theme = "matrix";
+    </script>
+    <link rel="stylesheet" href="../app.css" />
+    <link rel="stylesheet" href="proto.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="shell.js"></script>
+    <script>
+      paintShell({
+        title: "activity feed",
+        homeLabel: "activity",
+        main: `
+          <p class="proto-note">Option A — home is the audit log. Newest first, grouped by day. Projects, maps, and frontier stay in the left nav.</p>
+          <section class="box">
+            <div class="box-h">
+              <strong>activity</strong>
+              <div class="subnav">
+                <button class="active">all</button>
+                <button>work</button>
+                <button>lifecycle</button>
+                <button>comments</button>
+              </div>
+            </div>
+            <div class="box-b">
+              <div class="day-h"><span>today</span><span>friday 25 sep</span></div>
+              <div class="event">
+                <div class="event-time">15:41</div>
+                <div class="event-rail"><i class="event-dot work"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> resolved <a href="#/2">NL-2 What store?</a></div>
+                  <div class="event-gist">JSON on disk, atomic rename.</div>
+                </div>
+                <div class="event-meta"><span class="stamp closed">resolved</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="event">
+                <div class="event-time">15:38</div>
+                <div class="event-rail"><i class="event-dot work"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> claimed <a href="#/2">NL-2 What store?</a></div>
+                </div>
+                <div class="event-meta"><span class="stamp claim">claimed</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="event">
+                <div class="event-time">15:19</div>
+                <div class="event-rail"><i class="event-dot create"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> created project <a href="#/project/8">P-8 Project 8</a></div>
+                </div>
+                <div class="event-meta"><span class="stamp open">created</span></div>
+              </div>
+              <div class="event">
+                <div class="event-time">14:12</div>
+                <div class="event-rail"><i class="event-dot life"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> marked <a href="#/map/1">NL-1 Chart the destination</a> ready for spec</div>
+                </div>
+                <div class="event-meta"><span class="stamp claim">ready_for_spec</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="event">
+                <div class="event-time">13:04</div>
+                <div class="event-rail"><i class="event-dot note"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> commented on <a href="#/4">NL-4 Write the status snapshot</a></div>
+                  <div class="event-gist">Need the compact JSON to omit bodies so agents can scan it.</div>
+                </div>
+                <div class="event-meta"><span class="stamp">comment</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="day-h"><span>yesterday</span><span>thursday 24 sep</span></div>
+              <div class="event">
+                <div class="event-time">18:22</div>
+                <div class="event-rail"><i class="event-dot create"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> created <a href="#/4">NL-4 Write the status snapshot</a></div>
+                </div>
+                <div class="event-meta"><span class="stamp open">created</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="event">
+                <div class="event-time">18:20</div>
+                <div class="event-rail"><i class="event-dot life"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> blocked <a href="#/3">NL-3 How to expose MCP?</a> on <a href="#/2">NL-2</a></div>
+                </div>
+                <div class="event-meta"><span class="stamp blocked">blocked</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+              <div class="event">
+                <div class="event-time">16:02</div>
+                <div class="event-rail"><i class="event-dot create"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> created project <a href="#/project/2">P-2 NonLinear</a></div>
+                  <div class="event-gist">A local issue tracker Cursor can drive.</div>
+                </div>
+                <div class="event-meta"><span class="stamp open">created</span></div>
+              </div>
+              <div class="event">
+                <div class="event-time">16:00</div>
+                <div class="event-rail"><i class="event-dot create"></i></div>
+                <div class="event-main">
+                  <div class="event-line"><span class="event-who">cursor</span> created map <a href="#/map/1">NL-1 Chart the destination</a></div>
+                </div>
+                <div class="event-meta"><span class="stamp open">created</span><a class="muted" href="#/project/2">P-2</a></div>
+              </div>
+            </div>
+          </section>
+        `,
+        rail: `
+          <section class="box">
+            <div class="box-h"><strong>now</strong></div>
+            <div class="box-b pad">
+              <div class="rail-line"><span>claimed</span><b>1</b></div>
+              <div class="rail-line"><span>frontier</span><b>1</b></div>
+              <div class="rail-line"><span>blocked</span><b>1</b></div>
+              <div class="rail-line"><span>events today</span><b>5</b></div>
+            </div>
+          </section>
+          <section class="box">
+            <div class="box-h"><strong>next</strong></div>
+            <div class="box-b">
+              <a class="rel" href="#/12"><span class="id">NL-12</span><span class="rel-title">Add get_project_status</span></a>
+              <div class="hint">open, unblocked, unclaimed</div>
+            </div>
+          </section>
+          <section class="box">
+            <div class="box-h"><strong>in play</strong></div>
+            <div class="box-b">
+              <a class="rel" href="#/project/2"><span class="id">P-2</span><span class="rel-title">NonLinear</span></a>
+              <div class="hint">wayfinding · last write 15:41</div>
+            </div>
+          </section>
+        `,
+      });
+    </script>
+  </body>
+</html>
