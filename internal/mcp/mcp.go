@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 
@@ -266,9 +267,10 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project_status",
-		Description: "Big-picture status of a Project as compact JSON (kind nonlinear.project-status). Use this when asked what is going on with a project. Returns derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, next (same as list_frontier), and nextAction (suggested MCP tool). Pass id, or query (P-6, numeric id, or title). Does not return bodies or comments.",
+		Description: "Use this when the user says \"Give me the status of P-8\" (or any P-{id} / project title). Pass project=\"P-8\". Returns compact JSON (kind nonlinear.project-status): derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, next (same as list_frontier), and nextAction (suggested MCP tool). Also accepts id=8 or query/title. Does not return bodies or comments.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectStatusInput) (*mcp.CallToolResult, any, error) {
-		status, err := st.ProjectStatus(in.ID, in.Query)
+		id, query := in.ref()
+		status, err := st.ProjectStatus(id, query)
 		if err != nil {
 			return errResult(err)
 		}
@@ -515,8 +517,19 @@ type projectIDInput struct {
 }
 
 type projectStatusInput struct {
-	ID    *int   `json:"id,omitempty" jsonschema:"project id; optional if query is set"`
-	Query string `json:"query,omitempty" jsonschema:"project identifier (P-6), numeric id, or title"`
+	Project    string `json:"project,omitempty" jsonschema:"preferred. What the user said: P-8, 8, or a title. For 'Give me the status of P-8' pass P-8"`
+	Identifier string `json:"identifier,omitempty" jsonschema:"alias for project, e.g. P-8"`
+	ID         *int   `json:"id,omitempty" jsonschema:"numeric project id (8 for P-8); optional if project is set"`
+	Query      string `json:"query,omitempty" jsonschema:"alias for project: P-8, numeric id, or title"`
+}
+
+func (in projectStatusInput) ref() (*int, string) {
+	for _, s := range []string{in.Project, in.Identifier, in.Query} {
+		if p := strings.TrimSpace(s); p != "" {
+			return nil, p
+		}
+	}
+	return in.ID, ""
 }
 
 type createProjectInput struct {

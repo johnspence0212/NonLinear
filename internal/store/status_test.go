@@ -2,6 +2,7 @@ package store
 
 import (
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -69,6 +70,32 @@ func TestProjectStatusLookupAndCounts(t *testing.T) {
 	}
 	if _, err := s.ProjectStatus(nil, ""); !errors.Is(err, ErrInvalid) {
 		t.Fatalf("empty: %v", err)
+	}
+}
+
+func TestProjectStatusP8(t *testing.T) {
+	s := testStore(t)
+	var p8 model.ProjectView
+	for i := 1; i <= 8; i++ {
+		p, err := s.CreateProject(CreateProject{Title: fmt.Sprintf("Project %d", i)})
+		if err != nil {
+			t.Fatal(err)
+		}
+		p8 = p
+	}
+	if p8.Identifier != "P-8" {
+		t.Fatalf("identifier %s", p8.Identifier)
+	}
+	got, err := s.ProjectStatus(nil, "P-8")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got.ID != p8.ID || got.Identifier != "P-8" || got.Title != "Project 8" {
+		t.Fatalf("P-8: %+v", got)
+	}
+	lower, err := s.ProjectStatus(nil, "p-8")
+	if err != nil || lower.ID != p8.ID {
+		t.Fatalf("p-8: %+v %v", lower, err)
 	}
 }
 

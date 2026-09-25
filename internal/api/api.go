@@ -513,7 +513,10 @@ func (h *Handler) projectStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) projectStatusQuery(w http.ResponseWriter, r *http.Request) {
-	q := strings.TrimSpace(r.URL.Query().Get("query"))
+	q := strings.TrimSpace(r.URL.Query().Get("project"))
+	if q == "" {
+		q = strings.TrimSpace(r.URL.Query().Get("query"))
+	}
 	if q == "" {
 		q = strings.TrimSpace(r.URL.Query().Get("q"))
 	}

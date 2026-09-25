@@ -16,7 +16,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`.
 
-**Project status** — compact JSON snapshot (`kind: nonlinear.project-status`) from MCP `get_project_status` or `GET /api/projects/{id}/status`. Stage, counts, frontier/claimed/blocked, `next`, `nextAction`. No bodies or comments. Lookup by project id, `P-{id}`, or title.
+**Project status** — compact JSON snapshot (`kind: nonlinear.project-status`) from MCP `get_project_status` (`project: "P-8"`) or `GET /api/projects/{id}/status`. Stage, counts, frontier/claimed/blocked, `next`, `nextAction`. No bodies or comments. “Give me the status of P-8” is this tool.
 
 **Tags** — classification only (`wayfinder:*`, triage, catalog). They do not encode lifecycle or stage.
 

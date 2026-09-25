@@ -107,7 +107,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 | Move | MCP tool |
 | --- | --- |
 | List / get / create / update project | `list_projects`, `get_project`, `create_project`, `update_project` |
-| Project status (compact JSON) | `get_project_status` (`id` or `query`) |
+| Project status (compact JSON) | `get_project_status` (`project: "P-8"`) |
 | Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
@@ -124,7 +124,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 `list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `get_project_status`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `advance_to_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
-`get_project_status` is the big-picture read: pass `id` or `query` (identifier `P-6`, numeric id, or title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=…`. Use `get_project` when you need full artifact bodies.
+`get_project_status` is the big-picture read. In Cursor, “Give me the status of P-8” should call it with `project: "P-8"` (also accepts `id` or `query` / title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=P-8`. Use `get_project` when you need full artifact bodies.
 
 `GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
 

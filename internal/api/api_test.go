@@ -410,6 +410,10 @@ func TestProjectLifecycle(t *testing.T) {
 	if byQuery["id"] != status["id"] {
 		t.Fatalf("query status: %v", byQuery)
 	}
+	byIdent := getJSON(t, mux, fmt.Sprintf("/api/projects/status?project=P-%d", pid))
+	if byIdent["id"] != status["id"] {
+		t.Fatalf("P-n status: %v", byIdent)
+	}
 }
 
 func TestAdvanceToSpecHTTP(t *testing.T) {

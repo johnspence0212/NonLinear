@@ -3,6 +3,7 @@ package mcpserver
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -567,6 +568,53 @@ func TestMCPProjectLifecycle(t *testing.T) {
 	action, _ := gotStatus["nextAction"].(map[string]any)
 	if action["tool"] != "create_plan" && action["tool"] != "activate_plan" {
 		t.Fatalf("nextAction: %v", action)
+	}
+}
+
+func TestMCPStatusOfP8(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	var last map[string]any
+	for i := 1; i <= 8; i++ {
+		created, err := session.CallTool(ctx, &mcp.CallToolParams{
+			Name:      "create_project",
+			Arguments: map[string]any{"title": fmt.Sprintf("Project %d", i)},
+		})
+		if err != nil || created.IsError {
+			t.Fatalf("create %d: %v %v", i, err, created)
+		}
+		last = toolJSON(t, created)
+	}
+	if last["identifier"] != "P-8" {
+		t.Fatalf("last: %v", last)
+	}
+
+	status, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_project_status",
+		Arguments: map[string]any{"project": "P-8"},
+	})
+	if err != nil || status.IsError {
+		t.Fatalf("status of P-8: %v %v", err, status)
+	}
+	got := toolJSON(t, status)
+	if got["kind"] != "nonlinear.project-status" || got["identifier"] != "P-8" || got["title"] != "Project 8" {
+		t.Fatalf("P-8 status: %v", got)
 	}
 }
 
