@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>audit ledger · nonlinear</title>
+    <script>
+      document.documentElement.dataset.theme = "matrix";
+    </script>
+    <link rel="stylesheet" href="../app.css" />
+    <link rel="stylesheet" href="proto.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <script src="shell.js"></script>
+    <script>
+      paintShell({
+        title: "audit ledger",
+        homeLabel: "audit",
+        main: `
+          <p class="proto-note">Option C — a ledger. Fast to scan, easy to filter, closest to a real audit trail of who did what.</p>
+          <section class="box">
+            <div class="box-h">
+              <strong>audit</strong>
+              <div class="subnav">
+                <button class="active">all</button>
+                <button>cursor</button>
+                <button>lifecycle</button>
+                <button>P-2</button>
+              </div>
+            </div>
+            <div class="box-b">
+              <table class="ledger">
+                <thead>
+                  <tr>
+                    <th>when</th>
+                    <th>who</th>
+                    <th>action</th>
+                    <th>target</th>
+                    <th>project</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td class="when">15:41</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp closed">resolved</span></td>
+                    <td><a href="#/2">NL-2 What store?</a><span class="gist">JSON on disk, atomic rename.</span></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">15:38</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp claim">claimed</span></td>
+                    <td><a href="#/2">NL-2 What store?</a></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">15:19</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp open">created</span></td>
+                    <td><a href="#/project/8">P-8 Project 8</a></td>
+                    <td>—</td>
+                  </tr>
+                  <tr>
+                    <td class="when">14:12</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp claim">ready_for_spec</span></td>
+                    <td><a href="#/map/1">NL-1 Chart the destination</a></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">13:04</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp">comment</span></td>
+                    <td><a href="#/4">NL-4 Write the status snapshot</a><span class="gist">Need the compact JSON to omit bodies so agents can scan it.</span></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">yday 18:22</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp open">created</span></td>
+                    <td><a href="#/4">NL-4 Write the status snapshot</a></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">yday 18:20</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp blocked">blocked</span></td>
+                    <td><a href="#/3">NL-3 How to expose MCP?</a><span class="gist">blocked by NL-2</span></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                  <tr>
+                    <td class="when">yday 16:02</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp open">created</span></td>
+                    <td><a href="#/project/2">P-2 NonLinear</a><span class="gist">A local issue tracker Cursor can drive.</span></td>
+                    <td>—</td>
+                  </tr>
+                  <tr>
+                    <td class="when">yday 16:00</td>
+                    <td class="who">cursor</td>
+                    <td class="act"><span class="stamp open">created</span></td>
+                    <td><a href="#/map/1">NL-1 Chart the destination</a></td>
+                    <td><a href="#/project/2">P-2</a></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        `,
+        rail: `
+          <section class="box">
+            <div class="box-h"><strong>filters</strong></div>
+            <div class="box-b pad">
+              <div class="rail-line"><span>actor</span><b>anyone</b></div>
+              <div class="rail-line"><span>project</span><b>all</b></div>
+              <div class="rail-line"><span>kind</span><b>all events</b></div>
+            </div>
+          </section>
+          <section class="box">
+            <div class="box-h"><strong>event kinds</strong></div>
+            <div class="box-b pad">
+              <div class="rail-line"><span>created</span><b>4</b></div>
+              <div class="rail-line"><span>claimed / resolved</span><b>2</b></div>
+              <div class="rail-line"><span>lifecycle</span><b>2</b></div>
+              <div class="rail-line"><span>comments</span><b>1</b></div>
+            </div>
+          </section>
+        `,
+      });
+    </script>
+  </body>
+</html>
