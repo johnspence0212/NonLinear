@@ -402,6 +402,14 @@ func TestProjectLifecycle(t *testing.T) {
 	if got["stage"] != "ready_for_tickets" {
 		t.Fatalf("stage: %v", got)
 	}
+	status := getJSON(t, mux, fmt.Sprintf("/api/projects/%d/status", pid))
+	if status["kind"] != "nonlinear.project-status" || status["stage"] != "ready_for_tickets" {
+		t.Fatalf("status: %v", status)
+	}
+	byQuery := getJSON(t, mux, "/api/projects/status?query=Ship")
+	if byQuery["id"] != status["id"] {
+		t.Fatalf("query status: %v", byQuery)
+	}
 }
 
 func TestAdvanceToSpecHTTP(t *testing.T) {

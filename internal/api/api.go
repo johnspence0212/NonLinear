@@ -26,6 +26,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/projects", h.listProjects)
 	mux.HandleFunc("POST /api/projects", h.createProject)
 	mux.HandleFunc("POST /api/projects/move", h.moveToProject)
+	mux.HandleFunc("GET /api/projects/status", h.projectStatusQuery)
+	mux.HandleFunc("GET /api/projects/{id}/status", h.projectStatus)
 	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", h.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
@@ -495,6 +497,32 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
+}
+
+func (h *Handler) projectStatus(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	status, err := h.Store.ProjectStatus(&id, "")
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
+}
+
+func (h *Handler) projectStatusQuery(w http.ResponseWriter, r *http.Request) {
+	q := strings.TrimSpace(r.URL.Query().Get("query"))
+	if q == "" {
+		q = strings.TrimSpace(r.URL.Query().Get("q"))
+	}
+	status, err := h.Store.ProjectStatus(nil, q)
+	if err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, status)
 }
 
 func (h *Handler) createProject(w http.ResponseWriter, r *http.Request) {

@@ -549,6 +549,25 @@ func TestMCPProjectLifecycle(t *testing.T) {
 	if err != nil || listed.IsError {
 		t.Fatalf("list: %v %v", err, listed)
 	}
+
+	status, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_project_status",
+		Arguments: map[string]any{"query": "Ship"},
+	})
+	if err != nil || status.IsError {
+		t.Fatalf("status: %v %v", err, status)
+	}
+	gotStatus := toolJSON(t, status)
+	if gotStatus["kind"] != "nonlinear.project-status" || gotStatus["stage"] != "ready_for_tickets" {
+		t.Fatalf("status: %v", gotStatus)
+	}
+	if _, ok := gotStatus["progress"].(map[string]any); !ok {
+		t.Fatalf("progress: %v", gotStatus)
+	}
+	action, _ := gotStatus["nextAction"].(map[string]any)
+	if action["tool"] != "create_plan" && action["tool"] != "activate_plan" {
+		t.Fatalf("nextAction: %v", action)
+	}
 }
 
 func TestMCPMoveAndDeleteProject(t *testing.T) {

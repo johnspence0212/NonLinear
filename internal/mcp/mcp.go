@@ -248,20 +248,31 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6.",
+		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6. For a compact big-picture snapshot of one Project, use get_project_status.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
 		return textResult(map[string]any{"projects": st.ListProjects()})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project",
-		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, and Decision Map / Spec / Plan summaries.",
+		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, and full Decision Map / Spec / Plan views (including bodies). For a compact big-picture snapshot — stage, ticket counts, frontier, next action — use get_project_status.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.GetProject(in.ID)
 		if err != nil {
 			return errResult(err)
 		}
 		return textResult(project)
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "get_project_status",
+		Description: "Big-picture status of a Project as compact JSON (kind nonlinear.project-status). Use this when asked what is going on with a project. Returns derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, next (same as list_frontier), and nextAction (suggested MCP tool). Pass id, or query (P-6, numeric id, or title). Does not return bodies or comments.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectStatusInput) (*mcp.CallToolResult, any, error) {
+		status, err := st.ProjectStatus(in.ID, in.Query)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(status)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -501,6 +512,11 @@ type wipeInput struct {
 
 type projectIDInput struct {
 	ID int `json:"id" jsonschema:"project id"`
+}
+
+type projectStatusInput struct {
+	ID    *int   `json:"id,omitempty" jsonschema:"project id; optional if query is set"`
+	Query string `json:"query,omitempty" jsonschema:"project identifier (P-6), numeric id, or title"`
 }
 
 type createProjectInput struct {
