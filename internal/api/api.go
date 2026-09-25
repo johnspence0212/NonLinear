@@ -21,6 +21,7 @@ type Handler struct {
 
 func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("GET /api/health", h.health)
+	mux.HandleFunc("GET /api/home", h.home)
 	mux.HandleFunc("GET /api/labels", h.labels)
 	mux.HandleFunc("POST /api/labels", h.createLabel)
 	mux.HandleFunc("GET /api/projects", h.listProjects)
@@ -126,6 +127,10 @@ func writeCursorError(w http.ResponseWriter, err error) {
 		return
 	}
 	writeError(w, http.StatusInternalServerError, err.Error())
+}
+
+func (h *Handler) home(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, http.StatusOK, h.Store.Home())
 }
 
 func (h *Handler) health(w http.ResponseWriter, r *http.Request) {

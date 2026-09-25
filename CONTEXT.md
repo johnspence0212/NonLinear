@@ -18,6 +18,8 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Project status** — compact JSON snapshot (`kind: nonlinear.project-status`) from MCP `get_project_status` (`project: "P-8"`) or `GET /api/projects/{id}/status`. Stage, counts, frontier/claimed/blocked, `next`, `nextAction`. No bodies or comments. “Give me the status of P-8” is this tool.
 
+**Activity** — append-only event log on `db.json` (`events`, newest first, capped at 200). Written on create / claim / resolve / comment / block / lifecycle. Home is `GET /api/home`: claimed, frontier, blocked, events. The UI pages each list 5 at a time.
+
 **Tags** — classification only (`wayfinder:*`, triage, catalog). They do not encode lifecycle or stage.
 
 **Frontier** — open + unblocked + unclaimed tickets that are not a map, spec, or plan.

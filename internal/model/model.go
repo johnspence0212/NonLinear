@@ -91,6 +91,7 @@ type DB struct {
 	Issues        []Issue   `json:"issues"`
 	Labels        []string  `json:"labels,omitempty"`
 	Projects      []Project `json:"projects"`
+	Events        []Event   `json:"events,omitempty"`
 }
 
 func CloneIssue(in Issue) Issue {

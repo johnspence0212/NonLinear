@@ -14,6 +14,7 @@ const state = {
   defaultRepo: "",
   viewRepo: "",
   issueBackHref: "#/",
+  homePage: { claimed: 0, frontier: 0, blocked: 0, events: 0 },
 };
 
 const $ = (sel, el = document) => el.querySelector(sel);
@@ -714,48 +715,179 @@ function bindFolds() {
   });
 }
 
+const HOME_PAGE_SIZE = 5;
+
+function homePaged(items, key) {
+  const list = items || [];
+  const pages = Math.max(1, Math.ceil(list.length / HOME_PAGE_SIZE) || 1);
+  let page = state.homePage[key] || 0;
+  page = ((page % pages) + pages) % pages;
+  state.homePage[key] = page;
+  return {
+    rows: list.slice(page * HOME_PAGE_SIZE, page * HOME_PAGE_SIZE + HOME_PAGE_SIZE),
+    page,
+    pages,
+    total: list.length,
+  };
+}
+
+function homePager(key, paged) {
+  if (paged.total <= HOME_PAGE_SIZE) return "";
+  return `<button type="button" data-home-next="${key}">next ${paged.page + 1}/${paged.pages}</button>`;
+}
+
+function eventHref(ev) {
+  if (ev.targetKind === "project" && ev.projectId) return `#/project/${ev.projectId}`;
+  if (ev.targetKind === "map" && ev.issueId) return `#/map/${ev.issueId}`;
+  if (ev.targetKind === "spec" && ev.issueId) return `#/spec/${ev.issueId}`;
+  if (ev.targetKind === "plan" && ev.issueId) return `#/plan/${ev.issueId}`;
+  if (ev.issueId) return `#/${ev.issueId}`;
+  if (ev.projectId) return `#/project/${ev.projectId}`;
+  return "#/";
+}
+
+function eventStampKind(kind) {
+  if (kind === "resolved" || kind === "closed") return "closed";
+  if (kind === "claimed" || kind === "unclaimed" || kind === "ready_for_spec" || kind === "blocked") return "claim";
+  if (kind === "created" || kind === "reopened" || kind === "spec_draft" || kind === "plan_draft") return "open";
+  return "";
+}
+
+function eventLabel(kind) {
+  const labels = {
+    spec_draft: "spec",
+    spec_approved: "approved",
+    plan_draft: "tickets",
+    plan_active: "active",
+    plan_delivered: "delivered",
+  };
+  return labels[kind] || kind;
+}
+
+function eventVerb(kind) {
+  const verbs = {
+    created: "created",
+    claimed: "claimed",
+    unclaimed: "unclaimed",
+    resolved: "resolved",
+    closed: "closed",
+    reopened: "reopened",
+    commented: "commented on",
+    blocked: "blocked",
+    ready_for_spec: "marked ready for spec",
+    cleared: "cleared",
+    spec_draft: "drafted spec",
+    spec_approved: "approved",
+    plan_draft: "created tickets",
+    plan_active: "started",
+    plan_delivered: "delivered",
+    deleted: "deleted",
+  };
+  return verbs[kind] || kind;
+}
+
+function eventDot(kind) {
+  if (["claimed", "resolved", "closed", "reopened"].includes(kind)) return "work";
+  if (["commented"].includes(kind)) return "note";
+  if (["created"].includes(kind)) return "create";
+  return "life";
+}
+
+function eventTime(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toISOString().slice(11, 16);
+}
+
+function eventDay(iso) {
+  if (!iso) return "";
+  return new Date(iso).toISOString().slice(0, 10);
+}
+
+function eventRowsHTML(events) {
+  let lastDay = "";
+  return events
+    .map((ev) => {
+      const day = eventDay(ev.at);
+      const head = day && day !== lastDay ? `<div class="day-h">${esc(day)}</div>` : "";
+      lastDay = day;
+      const name = [ev.identifier, ev.title].filter(Boolean).join(" ");
+      return `${head}
+        <div class="event">
+          <div class="event-time">${esc(eventTime(ev.at))}</div>
+          <div class="event-rail"><i class="event-dot ${eventDot(ev.kind)}"></i></div>
+          <div class="event-main">
+            <div class="event-line"><span class="event-who">${esc(ev.actor || "cursor")}</span> ${esc(eventVerb(ev.kind))} <a href="${eventHref(ev)}">${esc(name)}</a></div>
+            ${ev.gist ? `<div class="event-gist">${esc(ev.gist)}</div>` : ""}
+          </div>
+          <div class="event-meta">${stamp(eventLabel(ev.kind), eventStampKind(ev.kind))}${ev.projectRef ? `<a class="muted" href="#/project/${ev.projectId || ""}">${esc(ev.projectRef)}</a>` : ""}</div>
+        </div>`;
+    })
+    .join("");
+}
+
+function nowListHTML(items, empty) {
+  if (!items.length) return `<div class="empty">${empty}</div>`;
+  return items
+    .map(
+      (issue) => `<div class="row">
+      <a class="id" href="${hrefFor(issue)}">${esc(issue.identifier)}</a>
+      <a class="title" href="${hrefFor(issue)}">${esc(issue.title)}</a>
+      <span class="mark">${statusStamp(issue)}</span>
+    </div>`
+    )
+    .join("");
+}
+
 async function renderHome() {
-  const [front, maps, projects] = await Promise.all([
-    api("/api/issues?frontier=1"),
-    api("/api/issues?labels=wayfinder:map"),
-    api("/api/projects"),
-  ]);
-  const frontier = (front.issues || []).filter((i) => !isArtifact(i));
-  const mapList = maps.issues || [];
-  const projectList = projects.projects || [];
-  state.projects = projectList;
-  const groups = groupTicketsByMap(frontier);
-  state.issues = flattenGroups(groups);
+  const home = await api("/api/home");
+  const claimed = homePaged(home.claimed, "claimed");
+  const frontier = homePaged(home.frontier, "frontier");
+  const blocked = homePaged(home.blocked, "blocked");
+  const events = homePaged(home.events, "events");
+  const focus = home.focus;
+  const today = home.today || {};
+  state.issues = (home.frontier || []).concat(home.claimed || []);
   if (state.selected >= state.issues.length) state.selected = 0;
   main.innerHTML = `
-    ${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}
-    ${statStrip()}
-    ${foldBox(
-      "projects",
-      "projects",
-      `<span class="box-actions"><a href="#/" data-jump="projects">open projects view</a></span>`,
-      projectList.map((p) => projectRowHTML(p)).join("") || `<div class="empty">no projects</div>`,
-      composeBar("new project", "compose-project", "project")
-    )}
-    ${foldBox(
-      "maps",
-      "maps",
-      `<span class="box-actions"><button type="button" data-import-map>import</button><a href="#/" data-jump="maps">open maps view</a></span>`,
-      mapList.map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
-      composeBar("new map")
-    )}
-    ${foldBox(
-      "frontier",
-      "frontier",
-      "<span>open, unblocked, and unclaimed</span>",
-      groupedTicketHTML(groups) || `<div class="empty">nothing on the frontier</div>`,
-      ticketHint()
+    ${flash()}
+    <div class="now-grid">
+      ${box(`<strong>claimed</strong>${homePager("claimed", claimed)}`, nowListHTML(claimed.rows, "nothing claimed"))}
+      ${box(`<strong>frontier</strong>${homePager("frontier", frontier)}`, nowListHTML(frontier.rows, "nothing on the frontier"))}
+      ${box(`<strong>waiting</strong>${homePager("blocked", blocked)}`, nowListHTML(blocked.rows, "nothing blocked"))}
+    </div>
+    ${box(
+      `<strong>activity</strong>${homePager("events", events)}`,
+      eventRowsHTML(events.rows) || `<div class="empty">no activity yet — create, claim, or resolve something</div>`
     )}`;
-  bindCompose({ labels: ["wayfinder:map"] });
-  bindProjectCompose("compose-project");
-  bindJump("maps");
-  bindJump("projects");
-  bindFolds();
+  main.querySelectorAll("[data-home-next]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const key = btn.dataset.homeNext;
+      state.homePage[key] = (state.homePage[key] || 0) + 1;
+      paint();
+    });
+  });
+  renderRail(
+    (focus
+      ? box(
+          "<strong>this project</strong>",
+          railLines([
+            ["focus", `${focus.identifier} ${focus.title}`],
+            ["stage", focus.stage || "wayfinding"],
+          ])
+        )
+      : "") +
+      box(
+        "<strong>today</strong>",
+        railLines([
+          ["resolved", today.resolved || 0],
+          ["claimed", today.claimed || 0],
+          ["created", today.created || 0],
+          ["lifecycle", today.lifecycle || 0],
+        ])
+      )
+  );
   syncChrome();
 }
 
@@ -1638,8 +1770,8 @@ async function paint() {
       } catch (err) {
         state.error = err.message;
         main.innerHTML = `<div class="error">${esc(err.message)}</div>`;
+        renderRail();
       }
-      renderRail();
       return;
     }
     if (r.name === "list") {

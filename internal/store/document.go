@@ -17,6 +17,7 @@ var knownDocumentKeys = map[string]bool{
 	"issues":        true,
 	"labels":        true,
 	"projects":      true,
+	"events":        true,
 }
 
 type leftover map[string]json.RawMessage
@@ -65,6 +66,9 @@ func EncodeDocument(db model.DB, extra leftover) ([]byte, error) {
 	if db.Projects == nil {
 		db.Projects = []model.Project{}
 	}
+	if db.Events == nil {
+		db.Events = []model.Event{}
+	}
 	if db.Prefix == "" {
 		db.Prefix = model.DefaultPrefix
 	}
@@ -105,6 +109,9 @@ func NormalizeDocument(db *model.DB) {
 	}
 	if db.Projects == nil {
 		db.Projects = []model.Project{}
+	}
+	if db.Events == nil {
+		db.Events = []model.Event{}
 	}
 	for i, p := range db.Projects {
 		if p.Identifier == "" {
@@ -160,6 +167,7 @@ func emptyDB() model.DB {
 		Issues:        []model.Issue{},
 		Labels:        []string{},
 		Projects:      []model.Project{},
+		Events:        []model.Event{},
 	}
 }
 

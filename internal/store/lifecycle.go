@@ -151,6 +151,17 @@ func (s *Store) CreateProject(in CreateProject) (model.ProjectView, error) {
 		UpdatedAt:   now,
 	}
 	s.db.Projects = append(s.db.Projects, p)
+	pid := p.ID
+	s.appendEventLocked(model.Event{
+		Actor:      "cursor",
+		Kind:       model.EventCreated,
+		Identifier: p.Identifier,
+		Title:      p.Title,
+		Gist:       strings.TrimSpace(p.Destination),
+		ProjectID:  &pid,
+		ProjectRef: p.Identifier,
+		TargetKind: "project",
+	})
 	if err := s.saveLocked(); err != nil {
 		return model.ProjectView{}, err
 	}
@@ -340,6 +351,11 @@ func (s *Store) setMapLifecycle(mapID int, life string) (model.IssueView, error)
 	issue.Kind = model.KindDecisionMap
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	kind := model.EventReadyForSpec
+	if life == model.MapLifecycleCleared {
+		kind = model.EventCleared
+	}
+	s.appendEventLocked(s.eventFromIssueLocked(kind, "cursor", "", issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -411,6 +427,7 @@ func (s *Store) createSpecLocked(src model.Issue) (model.IssueView, error) {
 		Comments:              []model.Comment{},
 	}
 	s.db.Issues = append(s.db.Issues, issue)
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventSpecDraft, "cursor", "", issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -466,6 +483,7 @@ func (s *Store) approveSpecLocked(specID int) (model.IssueView, error) {
 	issue.Lifecycle = model.SpecLifecycleApproved
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventSpecApproved, "cursor", "", issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -559,6 +577,7 @@ func (s *Store) createPlanLocked(src model.Issue) (model.IssueView, error) {
 		Comments:              []model.Comment{},
 	}
 	s.db.Issues = append(s.db.Issues, issue)
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventPlanDraft, "cursor", "", issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -596,6 +615,11 @@ func (s *Store) setPlanLifecycle(planID int, life string, allowed ...string) (mo
 	issue.Lifecycle = life
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	kind := model.EventPlanActive
+	if life == model.PlanLifecycleDelivered {
+		kind = model.EventPlanDelivered
+	}
+	s.appendEventLocked(s.eventFromIssueLocked(kind, "cursor", "", issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}

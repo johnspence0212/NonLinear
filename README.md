@@ -134,7 +134,7 @@ Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by
 
 | View | Shows |
 | --- | --- |
-| `home` | Stats strip, then collapsible **projects**, **maps**, and **frontier** (open/unclaimed tickets grouped by map) |
+| `home` | Now strip (**claimed** / **frontier** / **waiting**) plus an activity log. Each list shows 5 rows with **next** to page (wraps). Projects and maps stay under issues |
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `maps` | Wayfinder maps only (with a new-map box and import) |
 | `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |

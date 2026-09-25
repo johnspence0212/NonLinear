@@ -23,10 +23,11 @@ var (
 )
 
 type Store struct {
-	path  string
-	mu    sync.Mutex
-	db    model.DB
-	extra leftover
+	path        string
+	mu          sync.Mutex
+	db          model.DB
+	extra       leftover
+	quietEvents bool
 }
 
 type ListFilter struct {
@@ -144,6 +145,7 @@ func (s *Store) Wipe() (int, error) {
 	s.db.Issues = []model.Issue{}
 	s.db.Labels = []string{}
 	s.db.Projects = []model.Project{}
+	s.db.Events = []model.Event{}
 	s.db.NextID = 1
 	s.db.NextProjectID = 1
 	return n, s.saveLocked()
@@ -586,6 +588,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 			return model.IssueView{}, err
 		}
 	}
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventCreated, "cursor", "", s.byIDLocked()[id]))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -620,6 +623,7 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	if !ok {
 		return model.IssueView{}, ErrNotFound
 	}
+	old := model.CloneIssue(issue)
 	if in.Title != nil {
 		title := strings.TrimSpace(*in.Title)
 		if title == "" {
@@ -672,10 +676,11 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
 	s.ensureMapLocked(idx)
+	s.recordIssueDeltaLocked(old, s.db.Issues[idx])
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.viewLocked(s.db.Issues[idx]), nil
 }
 
 func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) {
@@ -703,6 +708,15 @@ func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) 
 	issue.BlockedBy = clean
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	if len(clean) > 0 {
+		ids := make([]string, 0, len(clean))
+		for _, bid := range clean {
+			if b, ok := s.findLocked(bid); ok {
+				ids = append(ids, b.Identifier)
+			}
+		}
+		s.appendEventLocked(s.eventFromIssueLocked(model.EventBlocked, "cursor", "blocked by "+strings.Join(ids, ", "), issue))
+	}
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -802,6 +816,7 @@ func (s *Store) AddComment(id int, author, body string) (model.IssueView, error)
 	})
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventCommented, author, gistLine(body), issue))
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
@@ -852,11 +867,42 @@ func (s *Store) Claim(id int, assignee string) (model.IssueView, error) {
 }
 
 func (s *Store) Resolve(id int, author, answer string) (model.IssueView, error) {
+	s.setQuiet(true)
+	defer s.setQuiet(false)
 	if _, err := s.AddComment(id, author, answer); err != nil {
 		return model.IssueView{}, err
 	}
 	closed := model.StateClosed
-	return s.Update(id, UpdateIssue{State: &closed})
+	issue, err := s.Update(id, UpdateIssue{State: &closed})
+	if err != nil {
+		return model.IssueView{}, err
+	}
+	if author == "" {
+		author = "cursor"
+	}
+	ev := model.Event{
+		Actor:      author,
+		Kind:       model.EventResolved,
+		Identifier: issue.Identifier,
+		Title:      issue.Title,
+		Gist:       gistLine(answer),
+		IssueID:    &issue.ID,
+		ProjectID:  issue.ProjectID,
+	}
+	if issue.ProjectRef != nil {
+		ev.ProjectRef = issue.ProjectRef.Identifier
+	}
+	if issue.Kind == model.KindDecisionMap {
+		ev.TargetKind = "map"
+	} else if issue.Kind == model.KindSpec {
+		ev.TargetKind = "spec"
+	} else if issue.Kind == model.KindPlan {
+		ev.TargetKind = "plan"
+	} else {
+		ev.TargetKind = "issue"
+	}
+	s.recordUnlocked(ev)
+	return issue, nil
 }
 
 func (s *Store) Frontier(parentID *int) []model.IssueView {

@@ -598,6 +598,24 @@ func TestCursorRunHTTP(t *testing.T) {
 	}
 }
 
+func TestHomeHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	postJSON(t, mux, "/api/projects", map[string]any{"title": "Ship"})
+	home := getJSON(t, mux, "/api/home")
+	if _, ok := home["events"].([]any); !ok {
+		t.Fatalf("home: %v", home)
+	}
+	if _, ok := home["claimed"].([]any); !ok {
+		t.Fatalf("claimed: %v", home)
+	}
+}
+
 func postJSON(t *testing.T, h http.Handler, path string, body any) map[string]any {
 	t.Helper()
 	raw, _ := json.Marshal(body)
