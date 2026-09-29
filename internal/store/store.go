@@ -285,12 +285,8 @@ func (s *Store) ImportMap(bundle model.MapBundle) (ImportResult, error) {
 	if err := s.saveLocked(); err != nil {
 		return ImportResult{}, err
 	}
-	view, err := s.savedViewLocked(rootNew)
-	if err != nil {
-		return ImportResult{}, err
-	}
 	return ImportResult{
-		Map:     view,
+		Map:     s.viewLocked(s.byIDLocked()[rootNew]),
 		Created: created,
 	}, nil
 }
@@ -458,7 +454,7 @@ func (s *Store) AddLabel(id int, name string) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) labelsLocked() []string {
@@ -548,13 +544,6 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		return model.IssueView{}, fmt.Errorf("%w: project %d", ErrNotFound, *in.ProjectID)
 	}
 	labels := uniqueStrings(in.Labels)
-	probe := model.Issue{Labels: labels, Body: in.Body}
-	if in.LinkedMapID != nil {
-		probe.Labels = append([]string{"wayfinder:map"}, probe.Labels...)
-	}
-	if err := s.validateArtifactBodyLocked(probe, in.Body); err != nil {
-		return model.IssueView{}, err
-	}
 	var linkedTarget *model.Issue
 	if in.LinkedMapID != nil {
 		target, ok := s.findLocked(*in.LinkedMapID)
@@ -568,6 +557,9 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		if !model.HasLabel(model.Issue{Labels: labels}, "wayfinder:map") {
 			labels = append([]string{"wayfinder:map"}, labels...)
 		}
+	}
+	if err := s.validateArtifactBodyLocked(model.Issue{Labels: labels}, in.Body); err != nil {
+		return model.IssueView{}, err
 	}
 	now := time.Now().UTC()
 	id := s.db.NextID
@@ -605,12 +597,13 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 			return model.IssueView{}, err
 		}
 	}
-	s.appendEventLocked(s.eventFromIssueLocked(model.EventCreated, "cursor", "", s.byIDLocked()[id]))
-	s.recordBlockedLocked(s.byIDLocked()[id])
+	created := s.byIDLocked()[id]
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventCreated, "cursor", "", created))
+	s.recordBlockedLocked(created)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 // createProjectIDLocked picks the Project a new issue belongs to.
@@ -704,7 +697,7 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) {
@@ -725,7 +718,7 @@ func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) 
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
@@ -737,7 +730,7 @@ func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) setLinkedMapsLocked(id int, mapIDs []int) error {
@@ -825,7 +818,7 @@ func (s *Store) AddComment(id int, author, body string) (model.IssueView, error)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, error) {
@@ -860,7 +853,7 @@ func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, 
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.savedViewLocked(id)
+	return s.viewLocked(s.byIDLocked()[id]), nil
 }
 
 func (s *Store) Claim(id int, assignee string) (model.IssueView, error) {
@@ -963,14 +956,6 @@ func (s *Store) byIDLocked() map[int]model.Issue {
 	return out
 }
 
-func (s *Store) savedViewLocked(id int) (model.IssueView, error) {
-	issue, ok := s.findLocked(id)
-	if !ok {
-		return model.IssueView{}, ErrNotFound
-	}
-	return s.viewLocked(issue), nil
-}
-
 func (s *Store) normalizeBlockersLocked(id int, blockerIDs []int) ([]int, error) {
 	seen := map[int]bool{}
 	clean := []int{}
@@ -1006,7 +991,7 @@ func (s *Store) recordBlockedLocked(issue model.Issue) {
 func (s *Store) kindMismatchLocked(issue model.Issue, want string) error {
 	got := model.ArtifactKind(issue)
 	hint := ""
-	if strings.EqualFold(strings.TrimSpace(want), model.KindSpec) || strings.EqualFold(strings.TrimSpace(want), "spec") {
+	if strings.EqualFold(strings.TrimSpace(want), model.KindSpec) {
 		if spec, ok := s.derivedLocked(model.KindSpec, issue.ID); ok {
 			hint = fmt.Sprintf("; spec is %s", spec.Identifier)
 		}

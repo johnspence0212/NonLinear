@@ -27,10 +27,10 @@ func TestMCPDependenciesAuthoritative(t *testing.T) {
 	set := callOK(t, ctx, session, "set_blocked_by", map[string]any{
 		"id": intID(b), "issueIds": []any{intID(a)},
 	})
-	assertBlocked(t, set, intID(a), true)
+	assertBlocked(t, set, intID(a))
 
 	got := callOK(t, ctx, session, "get_issue", map[string]any{"id": intID(b)})
-	assertBlocked(t, got, intID(a), true)
+	assertBlocked(t, got, intID(a))
 	if _, ok := got["body"]; !ok {
 		t.Fatal("get_issue must still return the full object")
 	}
@@ -38,12 +38,12 @@ func TestMCPDependenciesAuthoritative(t *testing.T) {
 	alias := callOK(t, ctx, session, "set_blocked_by", map[string]any{
 		"id": intID(b), "blockedBy": []any{intID(a)},
 	})
-	assertBlocked(t, alias, intID(a), true)
+	assertBlocked(t, alias, intID(a))
 
 	created := callOK(t, ctx, session, "create_issue", map[string]any{
 		"title": "Depends on A", "parentId": parent, "blockedBy": []any{intID(a)},
 	})
-	assertBlocked(t, created, intID(a), true)
+	assertBlocked(t, created, intID(a))
 
 	resolved := callOK(t, ctx, session, "resolve_issue", map[string]any{
 		"id": intID(a), "answer": "JSON on disk.",
@@ -154,19 +154,13 @@ func TestMCPRejectSpecBodyOnMap(t *testing.T) {
 	}
 }
 
-func assertBlocked(t *testing.T, obj map[string]any, blockerID int, blocked bool) {
+func assertBlocked(t *testing.T, obj map[string]any, blockerID int) {
 	t.Helper()
 	ids, _ := obj["blockedBy"].([]any)
-	if blocked {
-		if len(ids) != 1 || int(ids[0].(float64)) != blockerID {
-			t.Fatalf("blockedBy=%v want [%d] in %v", ids, blockerID, obj)
-		}
-		if obj["blocked"] != true || obj["frontier"] != false || obj["openBlockers"] != float64(1) {
-			t.Fatalf("derived blocked state: %v", obj)
-		}
-		return
+	if len(ids) != 1 || int(ids[0].(float64)) != blockerID {
+		t.Fatalf("blockedBy=%v want [%d] in %v", ids, blockerID, obj)
 	}
-	if len(ids) != 0 {
-		t.Fatalf("blockedBy should be empty: %v", obj)
+	if obj["blocked"] != true || obj["frontier"] != false || obj["openBlockers"] != float64(1) {
+		t.Fatalf("derived blocked state: %v", obj)
 	}
 }

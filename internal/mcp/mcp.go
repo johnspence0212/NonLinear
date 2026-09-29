@@ -42,7 +42,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -61,7 +61,7 @@ func New(st *store.Store) *mcp.Server {
 			a := in.Assignee
 			filter.Assignee = &a
 		}
-		return textResult(map[string]any{"issues": summarizeIssues(st.List(filter))})
+		return textResult(map[string]any{"issues": compactAll(st.List(filter))})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -88,12 +88,12 @@ func New(st *store.Store) *mcp.Server {
 			Project:     in.Project,
 			ProjectID:   in.ProjectID,
 			Assignee:    optString(in.Assignee),
-			BlockedBy:   firstIDs(in.BlockedBy, in.IssueIDs),
+			BlockedBy:   in.BlockedBy,
 		})
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, true))
+		return textResult(writeIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -126,7 +126,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -137,7 +137,11 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackComment(issue, lastCommentID(issue)))
+		out := writeIssue(issue, false)
+		if n := len(issue.Comments); n > 0 {
+			out.CommentID = issue.Comments[n-1].ID
+		}
+		return textResult(out)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -148,18 +152,20 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackComment(issue, in.CommentID))
+		out := writeIssue(issue, false)
+		out.CommentID = in.CommentID
+		return textResult(out)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_blocked_by",
 		Description: "Replace blocked-by edges. Pass issueIds (canonical) or blockedBy (alias). Returns the persisted blockedBy, blocked, openBlockers, and frontier flags — not the full issue. Pass issueIds=[] to clear. A ticket is unblocked when every blocker is closed.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in blockedInput) (*mcp.CallToolResult, any, error) {
-		issue, err := st.SetBlockedBy(in.ID, in.ids())
+		issue, err := st.SetBlockedBy(in.ID, firstIDs(in.IssueIDs, in.BlockedBy))
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -170,7 +176,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackLinked(issue))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -188,7 +194,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -199,7 +205,11 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackComment(issue, lastCommentID(issue)))
+		out := writeIssue(issue, false)
+		if n := len(issue.Comments); n > 0 {
+			out.CommentID = issue.Comments[n-1].ID
+		}
+		return textResult(out)
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -232,7 +242,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(map[string]any{"map": ackIssue(result.Map, true), "created": result.Created})
+		return textResult(map[string]any{"map": writeIssue(result.Map, true), "created": result.Created})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -253,7 +263,7 @@ func New(st *store.Store) *mcp.Server {
 		Name:        "list_projects",
 		Description: "List Projects as compact summaries (id, stage, destination, map/spec/plan summaries without bodies). Use get_project for full artifact bodies. Use get_project_status for the big-picture snapshot of one Project.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
-		return textResult(map[string]any{"projects": summarizeProjects(st.ListProjects())})
+		return textResult(map[string]any{"projects": compactProjects(st.ListProjects())})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -287,7 +297,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackProject(project, true))
+		return textResult(writeProject(project, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -298,7 +308,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackProject(project, false))
+		return textResult(writeProject(project, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -336,7 +346,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -347,7 +357,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -358,7 +368,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, true))
+		return textResult(writeIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -369,7 +379,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, true))
+		return textResult(writeIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -380,7 +390,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -391,7 +401,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, true))
+		return textResult(writeIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -402,7 +412,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, true))
+		return textResult(writeIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -413,7 +423,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -424,7 +434,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(ackIssue(issue, false))
+		return textResult(writeIssue(issue, false))
 	})
 
 	return server
@@ -454,7 +464,6 @@ type createInput struct {
 	ProjectID   *int     `json:"projectId,omitempty" jsonschema:"Project id to attach this issue to; use with labels=[wayfinder:map] to add a Decision Map to a Project"`
 	Assignee    string   `json:"assignee,omitempty"`
 	BlockedBy   []int    `json:"blockedBy,omitempty" jsonschema:"optional blocker ids when those issues already exist"`
-	IssueIDs    []int    `json:"issueIds,omitempty" jsonschema:"alias for blockedBy"`
 }
 
 type updateInput struct {
@@ -486,10 +495,6 @@ type blockedInput struct {
 	ID        int   `json:"id" jsonschema:"issue that is blocked"`
 	IssueIDs  []int `json:"issueIds,omitempty" jsonschema:"ids of issues that block this one"`
 	BlockedBy []int `json:"blockedBy,omitempty" jsonschema:"alias for issueIds"`
-}
-
-func (in blockedInput) ids() []int {
-	return firstIDs(in.IssueIDs, in.BlockedBy)
 }
 
 type linkedMapsInput struct {
@@ -571,7 +576,7 @@ type importMapInput struct {
 }
 
 func frontierPayload(issues []model.IssueView) map[string]any {
-	summaries := summarizeIssues(issues)
+	summaries := compactAll(issues)
 	var next any
 	if len(summaries) > 0 {
 		next = summaries[0]

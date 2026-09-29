@@ -131,11 +131,16 @@ func TestSetBlockedByWriteIsAuthoritative(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(got.BlockedBy) != 1 || got.BlockedBy[0] != a.ID {
-		t.Fatalf("write returned stale blockedBy: %+v", got.BlockedBy)
+	if len(got.BlockedBy) != 1 || got.BlockedBy[0] != a.ID || !got.Blocked || got.Frontier || got.OpenBlockers != 1 {
+		t.Fatalf("write returned stale state: blockedBy=%v blocked=%v frontier=%v open=%d", got.BlockedBy, got.Blocked, got.Frontier, got.OpenBlockers)
 	}
-	if !got.Blocked || got.Frontier || got.OpenBlockers != 1 {
-		t.Fatalf("derived state after set: frontier=%v blocked=%v open=%d", got.Frontier, got.Blocked, got.OpenBlockers)
+
+	wired, err := s.Create(CreateIssue{Title: "C", ParentID: &parent, BlockedBy: []int{a.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wired.BlockedBy) != 1 || wired.BlockedBy[0] != a.ID || !wired.Blocked {
+		t.Fatalf("create should persist blockers: %+v", wired)
 	}
 
 	reopened, err := Open(s.Path())
@@ -156,21 +161,6 @@ func TestSetBlockedByWriteIsAuthoritative(t *testing.T) {
 	}
 	if len(cleared.BlockedBy) != 0 || cleared.Blocked || !cleared.Frontier {
 		t.Fatalf("after removal: blockedBy=%v blocked=%v frontier=%v", cleared.BlockedBy, cleared.Blocked, cleared.Frontier)
-	}
-}
-
-func TestCreateWithBlockedBy(t *testing.T) {
-	s := testStore(t)
-	a, err := s.Create(CreateIssue{Title: "A"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	b, err := s.Create(CreateIssue{Title: "B", BlockedBy: []int{a.ID}})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(b.BlockedBy) != 1 || b.BlockedBy[0] != a.ID || !b.Blocked || b.Frontier {
-		t.Fatalf("create should persist blockers: %+v", b)
 	}
 }
 
