@@ -126,6 +126,8 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 `get_project_status` is the big-picture read. In Cursor, “Give me the status of P-8” should call it with `project: "P-8"` (also accepts `id` or `query` / title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=P-8`. Use `get_project` when you need full artifact bodies.
 
+Write operations (`create_issue`, `update_issue`, `set_blocked_by`, comments, lifecycle, project mutations) return compact confirmations: `id`, `identifier`, `state`, `updated`, plus the fields that prove the mutation (`blockedBy`, `frontier`, `kind`, `lifecycle`). They do not echo bodies, comments, children, or parent/project snapshots. `list_issues`, `list_frontier`, and `list_projects` return summaries. `get_issue` and `get_project` remain the full-object reads. Historical comments stay on the issue; retrieve them with `get_issue`.
+
 `GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
 
 ## Views

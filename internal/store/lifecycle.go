@@ -359,7 +359,7 @@ func (s *Store) setMapLifecycle(mapID int, life string) (model.IssueView, error)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(issue.ID)
 }
 
 func (s *Store) CreateSpec(mapID int) (model.IssueView, error) {
@@ -431,7 +431,7 @@ func (s *Store) createSpecLocked(src model.Issue) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(issue.ID)
 }
 
 // EnsureSpec returns the spec derived from this map, creating a draft
@@ -448,13 +448,13 @@ func (s *Store) ensureSpecLocked(id int) (model.IssueView, error) {
 		return model.IssueView{}, ErrNotFound
 	}
 	if model.IsSpec(issue) {
-		return s.viewLocked(issue), nil
+		return s.savedViewLocked(issue.ID)
 	}
 	if !model.IsMap(issue) {
 		return model.IssueView{}, fmt.Errorf("%w: issue %d is not a map or spec", ErrInvalid, id)
 	}
 	if existing, found := s.derivedLocked(model.KindSpec, issue.ID); found {
-		return s.viewLocked(existing), nil
+		return s.savedViewLocked(existing.ID)
 	}
 	issue.Lifecycle = model.MapLifecycleReadyForSpec
 	issue.Kind = model.KindDecisionMap
@@ -487,7 +487,7 @@ func (s *Store) approveSpecLocked(specID int) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(issue.ID)
 }
 
 // AdvanceToPlan returns the implementation plan for a map, spec, or plan.
@@ -506,7 +506,7 @@ func (s *Store) advanceToPlanLocked(id int) (model.IssueView, error) {
 		return model.IssueView{}, ErrNotFound
 	}
 	if model.IsPlan(issue) {
-		return s.viewLocked(issue), nil
+		return s.savedViewLocked(issue.ID)
 	}
 	spec := issue
 	if model.IsMap(issue) {
@@ -526,7 +526,7 @@ func (s *Store) advanceToPlanLocked(id int) (model.IssueView, error) {
 		spec = approved.Issue
 	}
 	if existing, found := s.derivedLocked(model.KindPlan, spec.ID); found {
-		return s.viewLocked(existing), nil
+		return s.savedViewLocked(existing.ID)
 	}
 	return s.createPlanLocked(spec)
 }
@@ -581,7 +581,7 @@ func (s *Store) createPlanLocked(src model.Issue) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(issue.ID)
 }
 
 func (s *Store) ActivatePlan(planID int) (model.IssueView, error) {
@@ -623,7 +623,7 @@ func (s *Store) setPlanLifecycle(planID int, life string, allowed ...string) (mo
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(issue.ID)
 }
 
 func (s *Store) derivedLocked(kind string, fromID int) (model.Issue, bool) {

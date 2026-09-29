@@ -42,12 +42,12 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_issues",
-		Description: "List NonLinear issues. Returns {issues:[...]}. Filter by state (open/closed), labels (AND), parentId (children of a map or plan), assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true for frontier tickets (open, unblocked, unclaimed). Maps, specs, and plans are never on the frontier. Closed issues are never on the frontier.",
+		Description: "List NonLinear issues as compact summaries (id, title, state, parent, blockers, frontier). No bodies, comments, or child collections. Filter by state (open/closed), labels (AND), parentId, assignee (use \"unassigned\" for unclaimed), project, query, or frontier=true. Use get_issue for full details.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in listInput) (*mcp.CallToolResult, any, error) {
 		filter := store.ListFilter{
 			State:        in.State,
@@ -61,12 +61,12 @@ func New(st *store.Store) *mcp.Server {
 			a := in.Assignee
 			filter.Assignee = &a
 		}
-		return textResult(map[string]any{"issues": st.List(filter)})
+		return textResult(map[string]any{"issues": summarizeIssues(st.List(filter))})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_issue",
-		Description: "Fetch one issue by id (the tracker's identity). Returns body, comments, children, blockers (what this waits on), blocks (what waits on this), optional linked map edges, projectRef, and frontier/blocked flags. Sibling maps live on the Project, not via linked edges. Use this to zoom into a Wayfinder ticket.",
+		Description: "Fetch one issue by id. Returns the full object: body, comments, children, blockers, blocks, linked maps, projectRef, and frontier/blocked flags. Use list_issues / list_frontier / get_project_status for compact navigation.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Get(in.ID)
 		if err != nil {
@@ -77,7 +77,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_issue",
-		Description: "Create an issue. Wayfinder map: labels=[\"wayfinder:map\"]. Put a map on an existing Project with projectId. Child ticket: set parentId to the map id and labels=[\"wayfinder:research|prototype|grilling|task\"]. Implementation ticket: set parentId to the plan id so it shows in the plan tickets section (a text reference to the plan is not enough). linkedMapId still creates a map and an optional bidirectional edge, and attaches it to the source map's Project — prefer projectId. Wire blocked-by in a second pass with set_blocked_by after ids exist.",
+		Description: "Create an issue. Returns a compact confirmation (id, identifier, state, blockedBy, frontier) — not the full object. Wayfinder map: labels=[\"wayfinder:map\"]. Put a map on an existing Project with projectId. Child ticket: set parentId. Optional blockedBy wires dependencies in the same call when the blocker ids already exist. linkedMapId still creates a map and an optional bidirectional edge — prefer projectId.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.Create(store.CreateIssue{
 			Title:       in.Title,
@@ -88,21 +88,23 @@ func New(st *store.Store) *mcp.Server {
 			Project:     in.Project,
 			ProjectID:   in.ProjectID,
 			Assignee:    optString(in.Assignee),
+			BlockedBy:   firstIDs(in.BlockedBy, in.IssueIDs),
 		})
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_issue",
-		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map or plan (implementation tickets belong to the plan id). Use this to append a line to a Wayfinder map body (Decisions so far).",
+		Description: "Update an issue. Returns a compact confirmation, not the body or comments. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Optional kind (spec, plan, decision-map, ticket) is checked against the issue and rejected on mismatch — use it when writing a spec so a map id cannot receive the spec body. Specification bodies cannot be written onto a decision map.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, any, error) {
 		up := store.UpdateIssue{
-			Title:   optString(in.Title),
-			Body:    in.Body,
-			Project: optString(in.Project),
+			Title:        optString(in.Title),
+			Body:         in.Body,
+			Project:      optString(in.Project),
+			ExpectedKind: in.Kind,
 		}
 		if in.Labels != nil {
 			up.Labels = &in.Labels
@@ -124,18 +126,18 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "add_comment",
-		Description: "Add a comment to an issue. Wayfinder resolve: post the answer as a resolution comment, then close (or call resolve_issue).",
+		Description: "Add a comment to an issue. Returns compact confirmation with commentId; use get_issue to read historical comments.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in commentInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.AddComment(in.ID, in.Author, in.Body)
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackComment(issue, lastCommentID(issue)))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -146,18 +148,18 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackComment(issue, in.CommentID))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "set_blocked_by",
-		Description: "Replace native blocked-by edges for an issue. Wayfinder second pass: after creating child tickets, set each ticket's blockers by issue id. A ticket is unblocked when every blocker is closed. The frontier is open + unblocked + unassigned children.",
+		Description: "Replace blocked-by edges. Pass issueIds (canonical) or blockedBy (alias). Returns the persisted blockedBy, blocked, openBlockers, and frontier flags — not the full issue. Pass issueIds=[] to clear. A ticket is unblocked when every blocker is closed.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in blockedInput) (*mcp.CallToolResult, any, error) {
-		issue, err := st.SetBlockedBy(in.ID, in.IssueIDs)
+		issue, err := st.SetBlockedBy(in.ID, in.ids())
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -168,12 +170,12 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackLinked(issue))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_frontier",
-		Description: "List frontier Wayfinder tickets: open, unassigned, every blocker closed, not a map/spec/plan. Pass parentId of the map or plan to scope to that parent's children. Returns {next, issues}. Use next as the next ticket — do not pick from get_issue children (those include closed tickets).",
+		Description: "List frontier tickets as compact summaries: open, unassigned, every blocker closed, not a map/spec/plan. Pass parentId to scope. Returns {next, issues}. Use next.id to claim. Use get_issue for the body.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in frontierInput) (*mcp.CallToolResult, any, error) {
 		return textResult(frontierPayload(st.Frontier(in.ParentID)))
 	})
@@ -186,7 +188,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -197,7 +199,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackComment(issue, lastCommentID(issue)))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -224,13 +226,13 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "import_map",
-		Description: "Import a single-map JSON bundle from export_map. Allocates new ids, remaps parent and blocked-by edges, and returns the new map. Does not overwrite existing issues; importing twice creates two maps.",
+		Description: "Import a single-map JSON bundle from export_map. Allocates new ids, remaps parent and blocked-by edges, and returns a compact confirmation for the new map plus created ids.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in importMapInput) (*mcp.CallToolResult, any, error) {
 		result, err := st.ImportMap(in.MapBundle)
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(result)
+		return textResult(map[string]any{"map": ackIssue(result.Map, true), "created": result.Created})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -249,9 +251,9 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6. For a compact big-picture snapshot of one Project, use get_project_status.",
+		Description: "List Projects as compact summaries (id, stage, destination, map/spec/plan summaries without bodies). Use get_project for full artifact bodies. Use get_project_status for the big-picture snapshot of one Project.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
-		return textResult(map[string]any{"projects": st.ListProjects()})
+		return textResult(map[string]any{"projects": summarizeProjects(st.ListProjects())})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -279,24 +281,24 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_project",
-		Description: "Create a Project parent. Creating a map does not create a Project. Attach a map with create_issue projectId, or move_to_project. Optional repo is the folder send-to-cursor uses for this Project.",
+		Description: "Create a Project parent. Creating a map does not create a Project. Attach a map with create_issue projectId, or move_to_project. Optional repo is the folder send-to-cursor uses for this Project. Returns a compact confirmation.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in createProjectInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.CreateProject(store.CreateProject{Title: in.Title, Destination: in.Destination, Repo: in.Repo})
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(project)
+		return textResult(ackProject(project, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_project",
-		Description: "Update a Project. Pass title, destination (the product writeup), and/or repo (folder Cursor uses). Empty repo clears it so send-to-cursor falls back to the server default.",
+		Description: "Update a Project. Pass title, destination (the product writeup), and/or repo (folder Cursor uses). Empty repo clears it so send-to-cursor falls back to the server default. Returns a compact confirmation.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateProjectInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.UpdateProject(in.ID, store.UpdateProject{Title: in.Title, Destination: in.Destination, Repo: in.Repo})
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(project)
+		return textResult(ackProject(project, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -307,7 +309,12 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(result)
+		return textResult(map[string]any{
+			"moved":      result.Moved,
+			"projectId":  result.Project.ID,
+			"identifier": result.Project.Identifier,
+			"updated":    true,
+		})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -329,7 +336,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -340,29 +347,29 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "create_spec",
-		Description: "Create a draft Spec from a map that is already ready_for_spec. Otherwise prefer advance_to_spec. Body is an empty to-spec skeleton (destination copied from the map). Does not run the /to-spec skill.",
+		Description: "Create a draft Spec from a map that is already ready_for_spec. Otherwise prefer advance_to_spec. Returns the new spec's id/identifier/kind — fill the body with update_issue on that spec id, not the map.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.CreateSpec(in.ID)
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "advance_to_spec",
-		Description: "Mark a Decision Map ready and create its draft Spec in one step. Use this for 'make the spec' when wayfinding is done. Returns the draft spec (empty to-spec skeleton, destination copied from the map); fill the SPEC body via the /to-spec skill, not the map. Does not run the /to-spec skill.",
+		Description: "Mark a Decision Map ready and create its draft Spec in one step. Returns the spec id/identifier/kind; fill that spec via update_issue (kind=spec), not the map.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in idInput) (*mcp.CallToolResult, any, error) {
 		issue, err := st.AdvanceToSpec(in.ID)
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -373,7 +380,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -384,7 +391,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -395,7 +402,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, true))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -406,7 +413,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
@@ -417,7 +424,7 @@ func New(st *store.Store) *mcp.Server {
 		if err != nil {
 			return errResult(err)
 		}
-		return textResult(issue)
+		return textResult(ackIssue(issue, false))
 	})
 
 	return server
@@ -446,6 +453,8 @@ type createInput struct {
 	Project     string   `json:"project,omitempty"`
 	ProjectID   *int     `json:"projectId,omitempty" jsonschema:"Project id to attach this issue to; use with labels=[wayfinder:map] to add a Decision Map to a Project"`
 	Assignee    string   `json:"assignee,omitempty"`
+	BlockedBy   []int    `json:"blockedBy,omitempty" jsonschema:"optional blocker ids when those issues already exist"`
+	IssueIDs    []int    `json:"issueIds,omitempty" jsonschema:"alias for blockedBy"`
 }
 
 type updateInput struct {
@@ -458,6 +467,7 @@ type updateInput struct {
 	ParentID    *int     `json:"parentId,omitempty"`
 	ClearParent bool     `json:"clearParent,omitempty"`
 	Project     string   `json:"project,omitempty"`
+	Kind        string   `json:"kind,omitempty" jsonschema:"expected artifact kind: spec, plan, decision-map, or ticket. Rejected if it does not match."`
 }
 
 type commentInput struct {
@@ -473,8 +483,13 @@ type updateCommentInput struct {
 }
 
 type blockedInput struct {
-	ID       int   `json:"id" jsonschema:"issue that is blocked"`
-	IssueIDs []int `json:"issueIds" jsonschema:"ids of issues that block this one"`
+	ID        int   `json:"id" jsonschema:"issue that is blocked"`
+	IssueIDs  []int `json:"issueIds,omitempty" jsonschema:"ids of issues that block this one"`
+	BlockedBy []int `json:"blockedBy,omitempty" jsonschema:"alias for issueIds"`
+}
+
+func (in blockedInput) ids() []int {
+	return firstIDs(in.IssueIDs, in.BlockedBy)
 }
 
 type linkedMapsInput struct {
@@ -556,11 +571,19 @@ type importMapInput struct {
 }
 
 func frontierPayload(issues []model.IssueView) map[string]any {
+	summaries := summarizeIssues(issues)
 	var next any
-	if len(issues) > 0 {
-		next = issues[0]
+	if len(summaries) > 0 {
+		next = summaries[0]
 	}
-	return map[string]any{"next": next, "issues": issues}
+	return map[string]any{"next": next, "issues": summaries}
+}
+
+func firstIDs(primary, alias []int) []int {
+	if primary != nil {
+		return primary
+	}
+	return alias
 }
 
 func optString(s string) *string {
@@ -571,7 +594,7 @@ func optString(s string) *string {
 }
 
 func textResult(v any) (*mcp.CallToolResult, any, error) {
-	raw, err := json.MarshalIndent(v, "", "  ")
+	raw, err := json.Marshal(v)
 	if err != nil {
 		return nil, nil, err
 	}

@@ -49,16 +49,18 @@ type CreateIssue struct {
 	Project     string
 	ProjectID   *int
 	Assignee    *string
+	BlockedBy   []int
 }
 
 type UpdateIssue struct {
-	Title    *string
-	Body     *string
-	Labels   *[]string
-	State    *string
-	Assignee *string // pointer to "" unassigns
-	ParentID **int   // pointer to nil pointer clears parent
-	Project  *string
+	Title        *string
+	Body         *string
+	Labels       *[]string
+	State        *string
+	Assignee     *string // pointer to "" unassigns
+	ParentID     **int   // pointer to nil pointer clears parent
+	Project      *string
+	ExpectedKind string
 }
 
 func Open(path string) (*Store, error) {
@@ -283,8 +285,12 @@ func (s *Store) ImportMap(bundle model.MapBundle) (ImportResult, error) {
 	if err := s.saveLocked(); err != nil {
 		return ImportResult{}, err
 	}
+	view, err := s.savedViewLocked(rootNew)
+	if err != nil {
+		return ImportResult{}, err
+	}
 	return ImportResult{
-		Map:     s.viewLocked(s.byIDLocked()[rootNew]),
+		Map:     view,
 		Created: created,
 	}, nil
 }
@@ -452,7 +458,7 @@ func (s *Store) AddLabel(id int, name string) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) labelsLocked() []string {
@@ -542,6 +548,13 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		return model.IssueView{}, fmt.Errorf("%w: project %d", ErrNotFound, *in.ProjectID)
 	}
 	labels := uniqueStrings(in.Labels)
+	probe := model.Issue{Labels: labels, Body: in.Body}
+	if in.LinkedMapID != nil {
+		probe.Labels = append([]string{"wayfinder:map"}, probe.Labels...)
+	}
+	if err := s.validateArtifactBodyLocked(probe, in.Body); err != nil {
+		return model.IssueView{}, err
+	}
 	var linkedTarget *model.Issue
 	if in.LinkedMapID != nil {
 		target, ok := s.findLocked(*in.LinkedMapID)
@@ -558,6 +571,10 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 	}
 	now := time.Now().UTC()
 	id := s.db.NextID
+	blockers, err := s.normalizeBlockersLocked(id, in.BlockedBy)
+	if err != nil {
+		return model.IssueView{}, err
+	}
 	s.db.NextID++
 	project := strings.TrimSpace(in.Project)
 	if project == "" {
@@ -573,7 +590,7 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		Labels:     labels,
 		Assignee:   assignee,
 		ParentID:   in.ParentID,
-		BlockedBy:  []int{},
+		BlockedBy:  blockers,
 		LinkedMaps: []int{},
 		Project:    project,
 		CreatedAt:  now,
@@ -589,10 +606,11 @@ func (s *Store) Create(in CreateIssue) (model.IssueView, error) {
 		}
 	}
 	s.appendEventLocked(s.eventFromIssueLocked(model.EventCreated, "cursor", "", s.byIDLocked()[id]))
+	s.recordBlockedLocked(s.byIDLocked()[id])
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(s.byIDLocked()[id]), nil
+	return s.savedViewLocked(id)
 }
 
 // createProjectIDLocked picks the Project a new issue belongs to.
@@ -624,6 +642,9 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 		return model.IssueView{}, ErrNotFound
 	}
 	old := model.CloneIssue(issue)
+	if in.ExpectedKind != "" && !model.KindMatches(issue, in.ExpectedKind) {
+		return model.IssueView{}, s.kindMismatchLocked(issue, in.ExpectedKind)
+	}
 	if in.Title != nil {
 		title := strings.TrimSpace(*in.Title)
 		if title == "" {
@@ -632,6 +653,9 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 		issue.Title = title
 	}
 	if in.Body != nil {
+		if err := s.validateArtifactBodyLocked(issue, *in.Body); err != nil {
+			return model.IssueView{}, err
+		}
 		issue.Body = *in.Body
 	}
 	if in.Labels != nil {
@@ -680,7 +704,7 @@ func (s *Store) Update(id int, in UpdateIssue) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(s.db.Issues[idx]), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) {
@@ -690,37 +714,18 @@ func (s *Store) SetBlockedBy(id int, blockerIDs []int) (model.IssueView, error) 
 	if !ok {
 		return model.IssueView{}, ErrNotFound
 	}
-	seen := map[int]bool{}
-	clean := []int{}
-	for _, bid := range blockerIDs {
-		if bid == id {
-			return model.IssueView{}, ErrSelfRelation
-		}
-		if seen[bid] {
-			continue
-		}
-		if _, ok := s.findLocked(bid); !ok {
-			return model.IssueView{}, fmt.Errorf("%w: blocker %d", ErrNotFound, bid)
-		}
-		seen[bid] = true
-		clean = append(clean, bid)
+	clean, err := s.normalizeBlockersLocked(id, blockerIDs)
+	if err != nil {
+		return model.IssueView{}, err
 	}
 	issue.BlockedBy = clean
 	issue.UpdatedAt = time.Now().UTC()
 	s.db.Issues[idx] = issue
-	if len(clean) > 0 {
-		ids := make([]string, 0, len(clean))
-		for _, bid := range clean {
-			if b, ok := s.findLocked(bid); ok {
-				ids = append(ids, b.Identifier)
-			}
-		}
-		s.appendEventLocked(s.eventFromIssueLocked(model.EventBlocked, "cursor", "blocked by "+strings.Join(ids, ", "), issue))
-	}
+	s.recordBlockedLocked(issue)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
@@ -732,7 +737,7 @@ func (s *Store) SetLinkedMaps(id int, mapIDs []int) (model.IssueView, error) {
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(s.byIDLocked()[id]), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) setLinkedMapsLocked(id int, mapIDs []int) error {
@@ -820,7 +825,7 @@ func (s *Store) AddComment(id int, author, body string) (model.IssueView, error)
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, error) {
@@ -855,7 +860,7 @@ func (s *Store) UpdateComment(id int, commentID, body string) (model.IssueView, 
 	if err := s.saveLocked(); err != nil {
 		return model.IssueView{}, err
 	}
-	return s.viewLocked(issue), nil
+	return s.savedViewLocked(id)
 }
 
 func (s *Store) Claim(id int, assignee string) (model.IssueView, error) {
@@ -956,6 +961,70 @@ func (s *Store) byIDLocked() map[int]model.Issue {
 		out[issue.ID] = issue
 	}
 	return out
+}
+
+func (s *Store) savedViewLocked(id int) (model.IssueView, error) {
+	issue, ok := s.findLocked(id)
+	if !ok {
+		return model.IssueView{}, ErrNotFound
+	}
+	return s.viewLocked(issue), nil
+}
+
+func (s *Store) normalizeBlockersLocked(id int, blockerIDs []int) ([]int, error) {
+	seen := map[int]bool{}
+	clean := []int{}
+	for _, bid := range blockerIDs {
+		if bid == id {
+			return nil, ErrSelfRelation
+		}
+		if seen[bid] {
+			continue
+		}
+		if _, ok := s.findLocked(bid); !ok {
+			return nil, fmt.Errorf("%w: blocker %d", ErrNotFound, bid)
+		}
+		seen[bid] = true
+		clean = append(clean, bid)
+	}
+	return clean, nil
+}
+
+func (s *Store) recordBlockedLocked(issue model.Issue) {
+	if len(issue.BlockedBy) == 0 {
+		return
+	}
+	ids := make([]string, 0, len(issue.BlockedBy))
+	for _, bid := range issue.BlockedBy {
+		if b, ok := s.findLocked(bid); ok {
+			ids = append(ids, b.Identifier)
+		}
+	}
+	s.appendEventLocked(s.eventFromIssueLocked(model.EventBlocked, "cursor", "blocked by "+strings.Join(ids, ", "), issue))
+}
+
+func (s *Store) kindMismatchLocked(issue model.Issue, want string) error {
+	got := model.ArtifactKind(issue)
+	hint := ""
+	if strings.EqualFold(strings.TrimSpace(want), model.KindSpec) || strings.EqualFold(strings.TrimSpace(want), "spec") {
+		if spec, ok := s.derivedLocked(model.KindSpec, issue.ID); ok {
+			hint = fmt.Sprintf("; spec is %s", spec.Identifier)
+		}
+	}
+	return fmt.Errorf("%w: %s is %s, not %s%s", ErrInvalid, issue.Identifier, got, want, hint)
+}
+
+func (s *Store) validateArtifactBodyLocked(issue model.Issue, body string) error {
+	if !model.IsMap(issue) || !model.LooksLikeSpecBody(body) {
+		return nil
+	}
+	hint := "; create the spec with advance_to_spec first"
+	if issue.ID != 0 {
+		if spec, ok := s.derivedLocked(model.KindSpec, issue.ID); ok {
+			hint = fmt.Sprintf("; write it to %s", spec.Identifier)
+		}
+	}
+	return fmt.Errorf("%w: body looks like a specification, not a decision map%s", ErrInvalid, hint)
 }
 
 func (s *Store) findLocked(id int) (model.Issue, bool) {

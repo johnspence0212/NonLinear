@@ -111,6 +111,104 @@ func TestFrontierBlockedClaimedClosed(t *testing.T) {
 	}
 }
 
+func TestSetBlockedByWriteIsAuthoritative(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	a, err := s.Create(CreateIssue{Title: "A", ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "B", ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got, err := s.SetBlockedBy(b.ID, []int{a.ID})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.BlockedBy) != 1 || got.BlockedBy[0] != a.ID {
+		t.Fatalf("write returned stale blockedBy: %+v", got.BlockedBy)
+	}
+	if !got.Blocked || got.Frontier || got.OpenBlockers != 1 {
+		t.Fatalf("derived state after set: frontier=%v blocked=%v open=%d", got.Frontier, got.Blocked, got.OpenBlockers)
+	}
+
+	reopened, err := Open(s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	again, err := reopened.Get(b.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(again.BlockedBy) != 1 || again.BlockedBy[0] != a.ID || !again.Blocked {
+		t.Fatalf("persisted state: %+v", again)
+	}
+
+	cleared, err := reopened.SetBlockedBy(b.ID, []int{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cleared.BlockedBy) != 0 || cleared.Blocked || !cleared.Frontier {
+		t.Fatalf("after removal: blockedBy=%v blocked=%v frontier=%v", cleared.BlockedBy, cleared.Blocked, cleared.Frontier)
+	}
+}
+
+func TestCreateWithBlockedBy(t *testing.T) {
+	s := testStore(t)
+	a, err := s.Create(CreateIssue{Title: "A"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	b, err := s.Create(CreateIssue{Title: "B", BlockedBy: []int{a.ID}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(b.BlockedBy) != 1 || b.BlockedBy[0] != a.ID || !b.Blocked || b.Frontier {
+		t.Fatalf("create should persist blockers: %+v", b)
+	}
+}
+
+func TestRejectSpecBodyOnMap(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}, Body: "## Destination\n\nShip.\n"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := model.SpecSkeleton("Ship.")
+	if _, err := s.Update(m.ID, UpdateIssue{Body: &body}); err == nil {
+		t.Fatal("expected spec-on-map rejection")
+	}
+	if _, err := s.ReadyForSpec(m.ID); err != nil {
+		t.Fatal(err)
+	}
+	spec, err := s.CreateSpec(m.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Update(m.ID, UpdateIssue{Body: &body}); err == nil {
+		t.Fatal("expected spec-on-map rejection after spec exists")
+	}
+	if _, err := s.Update(m.ID, UpdateIssue{ExpectedKind: "spec", Body: &body}); err == nil {
+		t.Fatal("expected kind mismatch")
+	}
+	if _, err := s.Update(spec.ID, UpdateIssue{ExpectedKind: "spec", Body: &body}); err != nil {
+		t.Fatalf("spec update should succeed: %v", err)
+	}
+	ticket, err := s.Create(CreateIssue{Title: "Notes", Body: body})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ticket.Body != body {
+		t.Fatal("generic tickets can hold any body")
+	}
+}
+
 func TestGlobalFrontierExcludesMapsAndClosed(t *testing.T) {
 	s := testStore(t)
 	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
