@@ -108,6 +108,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 | --- | --- |
 | List / get / create / update project | `list_projects`, `get_project`, `create_project`, `update_project` |
 | Project status (compact JSON) | `get_project_status` (`project: "P-8"`) |
+| List / add bugs (`B-N`) | `list_bugs`, `create_bug` (`project: "P-8"`, `title` or `titles`) |
 | Add a Decision Map to a Project | `create_issue` with `projectId` and labels `wayfinder:map` |
 | Move issues onto another project | `move_to_project` (`id` + descendants, or `fromProjectId` for the whole project) |
 | Delete a project | `delete_project` (cascades to maps, specs, plans, tickets) |
@@ -122,7 +123,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 ## MCP tools
 
-`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `get_project_status`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `advance_to_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
+`list_issues`, `get_issue`, `create_issue`, `update_issue`, `add_comment`, `update_comment`, `set_blocked_by`, `set_linked_maps`, `list_frontier`, `claim_issue`, `resolve_issue`, `delete_issue` (map + all children), `export_map`, `import_map`, `list_labels`, `create_label`, `add_label`, `list_projects`, `get_project`, `get_project_status`, `create_project`, `update_project`, `move_to_project`, `delete_project`, `list_bugs`, `create_bug`, `ready_for_spec`, `create_spec`, `advance_to_spec`, `approve_spec`, `create_plan`, `advance_to_plan`, `activate_plan`, `deliver_plan`, `clear_route`, `wipe_db` (`confirm: true`).
 
 `get_project_status` is the big-picture read. In Cursor, “Give me the status of P-8” should call it with `project: "P-8"` (also accepts `id` or `query` / title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=P-8`. Use `get_project` when you need full artifact bodies.
 
@@ -130,7 +131,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 ## Views
 
-Left nav is **home** and **projects**. A **Project** is the parent of Decision Maps → Spec → Tickets. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
+Left nav is **home** and **projects**. A **Project** is the parent of Decision Maps → Spec → Tickets, plus a bugs list. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
 
 | View | Shows |
 | --- | --- |
@@ -138,7 +139,7 @@ Left nav is **home** and **projects**. A **Project** is the parent of Decision M
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `#/tag/{label}` | Every issue with that tag: maps, specs, tickets. Header search jumps here when the query is an exact catalog tag (`wayfinder:grilling` or `#wayfinder:grilling`) |
 | `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
-| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows; compose another map onto this Project |
+| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`). Compose another map or a bug onto this Project |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
 | `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |

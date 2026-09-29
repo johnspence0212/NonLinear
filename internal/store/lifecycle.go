@@ -85,6 +85,7 @@ func (s *Store) projectViewLocked(p model.Project) model.ProjectView {
 		Maps:        []model.IssueView{},
 		Specs:       []model.IssueView{},
 		Plans:       []model.IssueView{},
+		Bugs:        []model.IssueView{},
 	}
 	for _, issue := range issues {
 		item := s.viewLocked(issue)
@@ -95,11 +96,14 @@ func (s *Store) projectViewLocked(p model.Project) model.ProjectView {
 			view.Specs = append(view.Specs, item)
 		case model.IsPlan(issue):
 			view.Plans = append(view.Plans, item)
+		case model.IsBug(issue):
+			view.Bugs = append(view.Bugs, item)
 		}
 	}
 	sort.Slice(view.Maps, func(i, j int) bool { return view.Maps[i].ID < view.Maps[j].ID })
 	sort.Slice(view.Specs, func(i, j int) bool { return view.Specs[i].ID < view.Specs[j].ID })
 	sort.Slice(view.Plans, func(i, j int) bool { return view.Plans[i].ID < view.Plans[j].ID })
+	sort.Slice(view.Bugs, func(i, j int) bool { return view.Bugs[i].ID < view.Bugs[j].ID })
 	return view
 }
 

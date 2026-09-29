@@ -87,6 +87,7 @@ type DB struct {
 	SchemaVersion int       `json:"schemaVersion,omitempty"`
 	NextID        int       `json:"nextId"`
 	NextProjectID int       `json:"nextProjectId"`
+	NextBugID     int       `json:"nextBugId"`
 	Prefix        string    `json:"prefix"`
 	Issues        []Issue   `json:"issues"`
 	Labels        []string  `json:"labels,omitempty"`

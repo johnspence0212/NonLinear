@@ -725,6 +725,100 @@ func TestMCPProjectRepo(t *testing.T) {
 	}
 }
 
+func TestMCPBugs(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	defer httpServer.Close()
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer session.Close()
+
+	proj, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "create_project",
+		Arguments: map[string]any{"title": "Ship"},
+	})
+	if err != nil || proj.IsError {
+		t.Fatalf("project: %v %v", err, proj)
+	}
+
+	created, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_bug",
+		Arguments: map[string]any{
+			"project": "P-1",
+			"title":   "Overflow on mobile",
+		},
+	})
+	if err != nil || created.IsError {
+		t.Fatalf("create_bug: %v %v", err, created)
+	}
+	got := toolJSON(t, created)
+	if got["identifier"] != "B-1" || got["kind"] != "bug" || got["title"] != "Overflow on mobile" {
+		t.Fatalf("bug: %v", got)
+	}
+
+	batch, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name: "create_bug",
+		Arguments: map[string]any{
+			"project": "P-1",
+			"titles":  []any{"Search misses tags", "Footer wraps"},
+		},
+	})
+	if err != nil || batch.IsError {
+		t.Fatalf("titles: %v %v", err, batch)
+	}
+	listed, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_bugs",
+		Arguments: map[string]any{"project": "P-1"},
+	})
+	if err != nil || listed.IsError {
+		t.Fatalf("list_bugs: %v %v", err, listed)
+	}
+	bugs, _ := toolJSON(t, listed)["bugs"].([]any)
+	if len(bugs) != 3 {
+		t.Fatalf("listed: %v", toolJSON(t, listed))
+	}
+	ids := []string{}
+	for _, raw := range bugs {
+		ids = append(ids, raw.(map[string]any)["identifier"].(string))
+	}
+	if fmt.Sprint(ids) != "[B-1 B-2 B-3]" {
+		t.Fatalf("identifiers: %v", ids)
+	}
+
+	open, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "list_bugs",
+		Arguments: map[string]any{"project": "P-1", "state": "open"},
+	})
+	if err != nil || open.IsError {
+		t.Fatalf("open: %v %v", err, open)
+	}
+	if n := len(toolJSON(t, open)["bugs"].([]any)); n != 3 {
+		t.Fatalf("open count %d", n)
+	}
+
+	fetched, err := session.CallTool(ctx, &mcp.CallToolParams{
+		Name:      "get_project",
+		Arguments: map[string]any{"id": 1},
+	})
+	if err != nil || fetched.IsError {
+		t.Fatalf("get_project: %v %v", err, fetched)
+	}
+	if n := len(toolJSON(t, fetched)["bugs"].([]any)); n != 3 {
+		t.Fatalf("project bugs: %v", toolJSON(t, fetched)["bugs"])
+	}
+}
+
 func toolJSON(t *testing.T, res *mcp.CallToolResult) map[string]any {
 	t.Helper()
 	raw, err := json.Marshal(res.StructuredContent)

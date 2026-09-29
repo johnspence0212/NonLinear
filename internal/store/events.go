@@ -121,6 +121,8 @@ func (s *Store) eventFromIssueLocked(kind, actor, gist string, issue model.Issue
 		ev.TargetKind = "spec"
 	case model.IsPlan(issue):
 		ev.TargetKind = "plan"
+	case model.IsBug(issue):
+		ev.TargetKind = "bug"
 	default:
 		ev.TargetKind = "issue"
 	}

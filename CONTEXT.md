@@ -4,7 +4,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 ## Glossary
 
-**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, and Tickets. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist.
+**Project** — parent entity (`P-{id}`). Owns Decision Maps, Spec, Tickets, and Bugs. Sibling maps belong here; that is the grouping, not linked-map edges. Stage is derived, never stored. A Project id space is separate from issues: `P-6` and `NL-6` can coexist. Bugs use a third display space: `B-6`.
 
 **Decision Map** — a Wayfinder map. `kind` is `decision-map`, or the issue still carries the `wayfinder:map` label. Maps still open at `#/map/{id}`. Decision tickets are children (`parentId`). A Project can have several maps.
 
@@ -13,6 +13,8 @@ Local JSON issue tracker. Agents are the primary user.
 **Spec** — an issue with `kind=spec`, derived from a map (`derivedFromArtifactId`). Lifecycle: `draft` → `approved` (or `superseded`). Open at `#/spec/{id}`.
 
 **Tickets** — an issue with `kind=plan`, derived from an approved spec. Lifecycle: `draft` → `active` → `delivered`. Implementation tickets are children of this list. Open at `#/plan/{id}`. The UI calls this Tickets; **to tickets** creates it and runs `/to-tickets`.
+
+**Bug** — a project-level work item (`kind=bug`), not a map/spec/plan child. Identifier `B-{n}` (separate counter from `NL-{n}` and `P-{n}`). Listed on `#/project/{id}` after Tickets. Claim and resolve like any ticket. MCP `list_bugs` / `create_bug`.
 
 **Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`.
 

@@ -13,6 +13,7 @@ var knownDocumentKeys = map[string]bool{
 	"schemaVersion": true,
 	"nextId":        true,
 	"nextProjectId": true,
+	"nextBugId":     true,
 	"prefix":        true,
 	"issues":        true,
 	"labels":        true,
@@ -77,6 +78,9 @@ func EncodeDocument(db model.DB, extra leftover) ([]byte, error) {
 	}
 	if db.NextProjectID < 1 {
 		db.NextProjectID = 1
+	}
+	if db.NextBugID < 1 {
+		db.NextBugID = 1
 	}
 	typed, err := json.Marshal(db)
 	if err != nil {
@@ -156,6 +160,18 @@ func NormalizeDocument(db *model.DB) {
 	if db.NextProjectID < 1 {
 		db.NextProjectID = 1
 	}
+	maxBug := 0
+	for _, issue := range db.Issues {
+		if n, ok := model.ParseBugIdentifier(issue.Identifier); ok && n > maxBug {
+			maxBug = n
+		}
+	}
+	if db.NextBugID <= maxBug {
+		db.NextBugID = maxBug + 1
+	}
+	if db.NextBugID < 1 {
+		db.NextBugID = 1
+	}
 	sort.SliceStable(db.Projects, func(i, j int) bool { return db.Projects[i].ID < db.Projects[j].ID })
 }
 
@@ -163,6 +179,7 @@ func emptyDB() model.DB {
 	return model.DB{
 		NextID:        1,
 		NextProjectID: 1,
+		NextBugID:     1,
 		Prefix:        model.DefaultPrefix,
 		Issues:        []model.Issue{},
 		Labels:        []string{},

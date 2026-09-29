@@ -148,6 +148,7 @@ func (s *Store) Wipe() (int, error) {
 	s.db.Events = []model.Event{}
 	s.db.NextID = 1
 	s.db.NextProjectID = 1
+	s.db.NextBugID = 1
 	return n, s.saveLocked()
 }
 
@@ -898,6 +899,8 @@ func (s *Store) Resolve(id int, author, answer string) (model.IssueView, error) 
 		ev.TargetKind = "spec"
 	} else if issue.Kind == model.KindPlan {
 		ev.TargetKind = "plan"
+	} else if issue.Kind == model.KindBug {
+		ev.TargetKind = "bug"
 	} else {
 		ev.TargetKind = "issue"
 	}

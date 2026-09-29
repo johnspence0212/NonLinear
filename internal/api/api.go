@@ -29,6 +29,8 @@ func (h *Handler) Register(mux *http.ServeMux) {
 	mux.HandleFunc("POST /api/projects/move", h.moveToProject)
 	mux.HandleFunc("GET /api/projects/status", h.projectStatusQuery)
 	mux.HandleFunc("GET /api/projects/{id}/status", h.projectStatus)
+	mux.HandleFunc("GET /api/projects/{id}/bugs", h.listBugs)
+	mux.HandleFunc("POST /api/projects/{id}/bugs", h.createBug)
 	mux.HandleFunc("GET /api/projects/{id}", h.getProject)
 	mux.HandleFunc("PATCH /api/projects/{id}", h.updateProject)
 	mux.HandleFunc("DELETE /api/projects/{id}", h.deleteProject)
@@ -502,6 +504,55 @@ func (h *Handler) getProject(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, project)
+}
+
+func (h *Handler) listBugs(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	if _, err := h.Store.GetProject(id); err != nil {
+		writeStoreError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"bugs": h.Store.ListBugs(id, r.URL.Query().Get("state"))})
+}
+
+func (h *Handler) createBug(w http.ResponseWriter, r *http.Request) {
+	id, ok := pathID(w, r)
+	if !ok {
+		return
+	}
+	var body struct {
+		Title  string   `json:"title"`
+		Body   string   `json:"body"`
+		Titles []string `json:"titles"`
+	}
+	if !decode(w, r, &body) {
+		return
+	}
+	titles := append([]string{}, body.Titles...)
+	if t := strings.TrimSpace(body.Title); t != "" {
+		titles = append([]string{t}, titles...)
+	}
+	if len(titles) == 0 {
+		writeError(w, http.StatusBadRequest, "title is required")
+		return
+	}
+	bugs := make([]model.IssueView, 0, len(titles))
+	for _, title := range titles {
+		bug, err := h.Store.CreateBug(store.CreateBug{Title: title, Body: body.Body, ProjectID: id})
+		if err != nil {
+			writeStoreError(w, err)
+			return
+		}
+		bugs = append(bugs, bug)
+	}
+	if len(bugs) == 1 {
+		writeJSON(w, http.StatusCreated, bugs[0])
+		return
+	}
+	writeJSON(w, http.StatusCreated, map[string]any{"bugs": bugs})
 }
 
 func (h *Handler) projectStatus(w http.ResponseWriter, r *http.Request) {

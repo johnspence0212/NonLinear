@@ -24,6 +24,7 @@ type Progress struct {
 	Specs   int          `json:"specs"`
 	Plans   int          `json:"plans"`
 	Tickets TicketCounts `json:"tickets"`
+	Bugs    TicketCounts `json:"bugs"`
 }
 
 // StatusTicket is a ticket without body or comments.
@@ -73,6 +74,7 @@ type ProjectStatus struct {
 	Maps        []StatusArtifact `json:"maps"`
 	Specs       []StatusArtifact `json:"specs"`
 	Plans       []StatusArtifact `json:"plans"`
+	Bugs        []StatusTicket   `json:"bugs"`
 	Frontier    []StatusTicket   `json:"frontier"`
 	Claimed     []StatusTicket   `json:"claimed"`
 	Blocked     []StatusTicket   `json:"blocked"`
@@ -95,6 +97,7 @@ func BuildProjectStatus(project Project, issues []Issue, byID map[int]Issue) Pro
 		Maps:        []StatusArtifact{},
 		Specs:       []StatusArtifact{},
 		Plans:       []StatusArtifact{},
+		Bugs:        []StatusTicket{},
 		Frontier:    []StatusTicket{},
 		Claimed:     []StatusTicket{},
 		Blocked:     []StatusTicket{},
@@ -107,6 +110,20 @@ func BuildProjectStatus(project Project, issues []Issue, byID map[int]Issue) Pro
 			status.Specs = append(status.Specs, statusArtifact(issue, issues, byID))
 		case IsPlan(issue):
 			status.Plans = append(status.Plans, statusArtifact(issue, issues, byID))
+		case IsBug(issue):
+			bug := statusTicket(issue, byID)
+			status.Bugs = append(status.Bugs, bug)
+			if issue.State == StateOpen {
+				if bug.Frontier {
+					status.Frontier = append(status.Frontier, bug)
+				}
+				if AssigneeValue(issue) != "" {
+					status.Claimed = append(status.Claimed, bug)
+				}
+				if bug.Blocked {
+					status.Blocked = append(status.Blocked, bug)
+				}
+			}
 		default:
 			ticket := statusTicket(issue, byID)
 			if issue.State == StateOpen {
@@ -125,6 +142,7 @@ func BuildProjectStatus(project Project, issues []Issue, byID map[int]Issue) Pro
 	sort.Slice(status.Maps, func(i, j int) bool { return status.Maps[i].ID < status.Maps[j].ID })
 	sort.Slice(status.Specs, func(i, j int) bool { return status.Specs[i].ID < status.Specs[j].ID })
 	sort.Slice(status.Plans, func(i, j int) bool { return status.Plans[i].ID < status.Plans[j].ID })
+	sort.Slice(status.Bugs, func(i, j int) bool { return status.Bugs[i].ID < status.Bugs[j].ID })
 	sort.Slice(status.Frontier, func(i, j int) bool { return status.Frontier[i].ID < status.Frontier[j].ID })
 	sort.Slice(status.Claimed, func(i, j int) bool { return status.Claimed[i].ID < status.Claimed[j].ID })
 	sort.Slice(status.Blocked, func(i, j int) bool { return status.Blocked[i].ID < status.Blocked[j].ID })
@@ -133,6 +151,7 @@ func BuildProjectStatus(project Project, issues []Issue, byID map[int]Issue) Pro
 		Specs:   len(status.Specs),
 		Plans:   len(status.Plans),
 		Tickets: countTickets(issues, byID, nil),
+		Bugs:    countBugs(issues, byID),
 	}
 	if len(status.Frontier) > 0 {
 		next := status.Frontier[0]
@@ -182,10 +201,35 @@ func statusTicket(issue Issue, byID map[int]Issue) StatusTicket {
 func countTickets(issues []Issue, byID map[int]Issue, parent *int) TicketCounts {
 	var c TicketCounts
 	for _, issue := range issues {
-		if IsArtifact(issue) {
+		if IsArtifact(issue) || IsBug(issue) {
 			continue
 		}
 		if parent != nil && (issue.ParentID == nil || *issue.ParentID != *parent) {
+			continue
+		}
+		c.Total++
+		if issue.State == StateClosed {
+			c.Closed++
+			continue
+		}
+		c.Open++
+		if IsFrontier(issue, byID) {
+			c.Frontier++
+		}
+		if AssigneeValue(issue) != "" {
+			c.Claimed++
+		}
+		if IsBlocked(issue, byID) {
+			c.Blocked++
+		}
+	}
+	return c
+}
+
+func countBugs(issues []Issue, byID map[int]Issue) TicketCounts {
+	var c TicketCounts
+	for _, issue := range issues {
+		if !IsBug(issue) {
 			continue
 		}
 		c.Total++

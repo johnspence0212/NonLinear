@@ -100,6 +100,10 @@ function isPlan(issue) {
   return issue.kind === "plan";
 }
 
+function isBug(issue) {
+  return issue.kind === "bug";
+}
+
 function isArtifact(issue) {
   return isMap(issue) || isSpec(issue) || isPlan(issue);
 }
@@ -361,6 +365,15 @@ function bindCompose(extra, formId = "compose") {
         location.hash = `#/project/${created.id}`;
         return;
       }
+      if (extra && extra._bug && extra.projectId) {
+        const body = form.querySelector("[name=body]")?.value || "";
+        await api("/api/projects/" + extra.projectId + "/bugs", {
+          method: "POST",
+          body: JSON.stringify({ title, body }),
+        });
+        await paint();
+        return;
+      }
       const body = form.querySelector("[name=body]")?.value || "";
       const { _project, ...payload } = extra || {};
       const created = await api("/api/issues", {
@@ -554,7 +567,14 @@ function projectCounts(project) {
   const maps = (project.maps || []).length;
   const specs = (project.specs || []).length;
   const plans = (project.plans || []).length;
-  return `${maps} map${maps === 1 ? "" : "s"} · ${specs} spec${specs === 1 ? "" : "s"} · ${plans} tickets`;
+  const bugs = (project.bugs || []).length;
+  const parts = [
+    `${maps} map${maps === 1 ? "" : "s"}`,
+    `${specs} spec${specs === 1 ? "" : "s"}`,
+    `${plans} tickets`,
+  ];
+  if (bugs) parts.push(`${bugs} bug${bugs === 1 ? "" : "s"}`);
+  return parts.join(" · ");
 }
 
 function projectRowHTML(project, selected = false, nav = false) {
@@ -596,8 +616,8 @@ function statStrip() {
 
 function renderTagList(label) {
   const maps = state.issues.filter(isMap);
-  const extras = state.issues.filter((i) => isSpec(i) || isPlan(i));
-  const groups = groupTicketsByMap(state.issues.filter((i) => !isArtifact(i)));
+  const extras = state.issues.filter((i) => isSpec(i) || isPlan(i) || isBug(i));
+  const groups = groupTicketsByMap(state.issues.filter((i) => !isArtifact(i) && !isBug(i)));
   state.issues = flattenGroups(groups, true);
   if (state.selected >= state.issues.length) state.selected = 0;
   const n = maps.length + extras.length + state.issues.length;
@@ -1103,6 +1123,11 @@ async function renderProject(id) {
     ${box(
       "<strong>tickets</strong>",
       (project.plans || []).map(artifactRowHTML).join("") || `<div class="empty">none — make tickets from the spec</div>`
+    )}
+    ${box(
+      "<strong>bugs</strong>",
+      (project.bugs || []).map((b) => ticketHTML(b, false, true)).join("") || `<div class="empty">no bugs</div>`,
+      composeBar("new bug", "compose-bug")
     )}`;
   renderRail(
     box(
@@ -1113,6 +1138,7 @@ async function renderProject(id) {
         ["maps", (project.maps || []).length],
         ["specs", (project.specs || []).length],
         ["tickets", (project.plans || []).length],
+        ["bugs", (project.bugs || []).length],
       ])
     )
   );
@@ -1160,6 +1186,7 @@ async function renderProject(id) {
     });
   }
   bindCompose({ labels: ["wayfinder:map"], projectId: project.id });
+  bindCompose({ _bug: true, projectId: project.id }, "compose-bug");
   syncChrome();
 }
 
@@ -1793,8 +1820,8 @@ async function renderSearch(query) {
     const data = await api("/api/issues?" + new URLSearchParams({ query }).toString());
     const all = data.issues || [];
     mapList = all.filter(isMap);
-    extras = all.filter((i) => isSpec(i) || isPlan(i));
-    groups = groupTicketsByMap(all.filter((i) => !isArtifact(i)));
+    extras = all.filter((i) => isSpec(i) || isPlan(i) || isBug(i));
+    groups = groupTicketsByMap(all.filter((i) => !isArtifact(i) && !isBug(i)));
     state.issues = flattenGroups(groups, true);
     if (state.selected >= state.issues.length) state.selected = 0;
     state.error = "";

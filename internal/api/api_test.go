@@ -622,6 +622,33 @@ func TestIssueQueryMatchesLabels(t *testing.T) {
 	}
 }
 
+func TestProjectBugsHTTP(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	proj := postJSON(t, mux, "/api/projects", map[string]any{"title": "Ship"})
+	bug := postJSON(t, mux, "/api/projects/"+itoa(proj["id"])+"/bugs", map[string]any{
+		"title": "Overflow on mobile",
+		"body":  "The row wraps.",
+	})
+	if bug["identifier"] != "B-1" || bug["kind"] != "bug" {
+		t.Fatalf("bug: %v", bug)
+	}
+	listed := getJSON(t, mux, "/api/projects/"+itoa(proj["id"])+"/bugs")
+	bugs := listed["bugs"].([]any)
+	if len(bugs) != 1 || bugs[0].(map[string]any)["identifier"] != "B-1" {
+		t.Fatalf("list: %v", listed)
+	}
+	got := getJSON(t, mux, "/api/projects/"+itoa(proj["id"]))
+	if n := len(got["bugs"].([]any)); n != 1 {
+		t.Fatalf("project bugs: %v", got["bugs"])
+	}
+}
+
 func TestHomeHTTP(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

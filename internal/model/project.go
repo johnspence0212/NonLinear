@@ -2,6 +2,7 @@ package model
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -13,6 +14,7 @@ const (
 	KindDecisionMap = "decision-map"
 	KindSpec        = "spec"
 	KindPlan        = "plan"
+	KindBug         = "bug"
 )
 
 const (
@@ -69,15 +71,38 @@ type ProjectView struct {
 	Maps        []IssueView `json:"maps"`
 	Specs       []IssueView `json:"specs"`
 	Plans       []IssueView `json:"plans"`
+	Bugs        []IssueView `json:"bugs"`
 }
 
 func ProjectIdentifier(id int) string {
 	return fmt.Sprintf("P-%d", id)
 }
 
+func BugIdentifier(id int) string {
+	return fmt.Sprintf("B-%d", id)
+}
+
+func ParseBugIdentifier(s string) (int, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) < 3 {
+		return 0, false
+	}
+	upper := strings.ToUpper(s)
+	if !strings.HasPrefix(upper, "B-") {
+		return 0, false
+	}
+	n, err := strconv.Atoi(upper[2:])
+	if err != nil || n < 1 {
+		return 0, false
+	}
+	return n, true
+}
+
 func IsSpec(issue Issue) bool { return issue.Kind == KindSpec }
 
 func IsPlan(issue Issue) bool { return issue.Kind == KindPlan }
+
+func IsBug(issue Issue) bool { return issue.Kind == KindBug }
 
 func IsArtifact(issue Issue) bool {
 	return IsMap(issue) || IsSpec(issue) || IsPlan(issue)

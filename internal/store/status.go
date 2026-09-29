@@ -20,6 +20,16 @@ func (s *Store) ProjectStatus(id *int, query string) (model.ProjectStatus, error
 	return s.projectStatusLocked(*p), nil
 }
 
+func (s *Store) ResolveProject(id *int, query string) (model.Project, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	p, err := s.lookupProjectLocked(id, query)
+	if err != nil {
+		return model.Project{}, err
+	}
+	return *p, nil
+}
+
 func (s *Store) projectStatusLocked(p model.Project) model.ProjectStatus {
 	return model.BuildProjectStatus(p, s.issuesForProjectLocked(p.ID), s.byIDLocked())
 }

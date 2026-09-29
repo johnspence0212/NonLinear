@@ -96,6 +96,48 @@ func New(st *store.Store) *mcp.Server {
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
+		Name:        "list_bugs",
+		Description: "List bugs on a Project. Identifiers look like B-1 (separate from NL-N and P-N). Pass project=\"P-8\" (also id or title). Optional state open/closed. Returns {bugs:[...]}. Claim or resolve with claim_issue / resolve_issue using id. When the user says \"do these\" bugs, list them here then claim the next open one.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in listBugsInput) (*mcp.CallToolResult, any, error) {
+		id, query := in.ref()
+		project, err := st.ResolveProject(id, query)
+		if err != nil {
+			return errResult(err)
+		}
+		return textResult(map[string]any{"bugs": st.ListBugs(project.ID, in.State)})
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
+		Name:        "create_bug",
+		Description: "Add a bug on a Project. Identifier is B-N. Pass project=\"P-8\" (or projectId) and title. For a todo list pass titles:[\"...\",\"...\"]. Returns the bug, or {bugs:[...]} when creating more than one. Not a map/spec/plan child — it shows in the project bugs section.",
+	}, func(ctx context.Context, req *mcp.CallToolRequest, in createBugInput) (*mcp.CallToolResult, any, error) {
+		id, query := in.ref()
+		project, err := st.ResolveProject(id, query)
+		if err != nil {
+			return errResult(err)
+		}
+		titles := append([]string{}, in.Titles...)
+		if t := strings.TrimSpace(in.Title); t != "" {
+			titles = append([]string{t}, titles...)
+		}
+		if len(titles) == 0 {
+			return errResult(fmt.Errorf("%w: title or titles is required", store.ErrInvalid))
+		}
+		bugs := make([]model.IssueView, 0, len(titles))
+		for _, title := range titles {
+			bug, err := st.CreateBug(store.CreateBug{Title: title, Body: in.Body, ProjectID: project.ID})
+			if err != nil {
+				return errResult(err)
+			}
+			bugs = append(bugs, bug)
+		}
+		if len(bugs) == 1 {
+			return textResult(bugs[0])
+		}
+		return textResult(map[string]any{"bugs": bugs})
+	})
+
+	mcp.AddTool(server, &mcp.Tool{
 		Name:        "update_issue",
 		Description: "Update an issue. Set state to closed to close. Set assignee to claim; empty string or \"unassigned\" to unclaim. Set parentId to attach a child to a map or plan (implementation tickets belong to the plan id). Use this to append a line to a Wayfinder map body (Decisions so far).",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in updateInput) (*mcp.CallToolResult, any, error) {
@@ -235,7 +277,7 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "wipe_db",
-		Description: "Erase every issue and reset ids so the next create is NL-1. Requires confirm=true. Irreversible.",
+		Description: "Erase every issue and reset ids so the next create is NL-1, P-1, B-1. Requires confirm=true. Irreversible.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in wipeInput) (*mcp.CallToolResult, any, error) {
 		if !in.Confirm {
 			return errResult(fmt.Errorf("%w: confirm must be true", store.ErrInvalid))
@@ -249,14 +291,14 @@ func New(st *store.Store) *mcp.Server {
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "list_projects",
-		Description: "List Projects (parent of Decision Map → Spec → Plan). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6. For a compact big-picture snapshot of one Project, use get_project_status.",
+		Description: "List Projects (parent of Decision Map → Spec → Tickets, plus bugs). Returns {projects:[...]} with derived stage. A Project identifier looks like P-6 and can coexist with NL-6 and B-6. For a compact big-picture snapshot of one Project, use get_project_status.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in emptyInput) (*mcp.CallToolResult, any, error) {
 		return textResult(map[string]any{"projects": st.ListProjects()})
 	})
 
 	mcp.AddTool(server, &mcp.Tool{
 		Name:        "get_project",
-		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, and full Decision Map / Spec / Plan views (including bodies). For a compact big-picture snapshot — stage, ticket counts, frontier, next action — use get_project_status.",
+		Description: "Fetch one Project by id. Returns destination, optional repo (folder Cursor uses), derived stage, full Decision Map / Spec / Tickets views (including bodies), and bugs (B-N). For a compact big-picture snapshot — stage, ticket counts, frontier, next action — use get_project_status.",
 	}, func(ctx context.Context, req *mcp.CallToolRequest, in projectIDInput) (*mcp.CallToolResult, any, error) {
 		project, err := st.GetProject(in.ID)
 		if err != nil {
@@ -514,6 +556,46 @@ type wipeInput struct {
 
 type projectIDInput struct {
 	ID int `json:"id" jsonschema:"project id"`
+}
+
+type listBugsInput struct {
+	Project    string `json:"project,omitempty" jsonschema:"preferred. P-8, 8, or a title"`
+	Identifier string `json:"identifier,omitempty" jsonschema:"alias for project, e.g. P-8"`
+	ID         *int   `json:"id,omitempty" jsonschema:"numeric project id; optional if project is set"`
+	Query      string `json:"query,omitempty" jsonschema:"alias for project"`
+	State      string `json:"state,omitempty" jsonschema:"open or closed"`
+}
+
+func (in listBugsInput) ref() (*int, string) {
+	for _, s := range []string{in.Project, in.Identifier, in.Query} {
+		if p := strings.TrimSpace(s); p != "" {
+			return nil, p
+		}
+	}
+	return in.ID, ""
+}
+
+type createBugInput struct {
+	Project    string   `json:"project,omitempty" jsonschema:"preferred. P-8, 8, or a title"`
+	Identifier string   `json:"identifier,omitempty" jsonschema:"alias for project, e.g. P-8"`
+	ID         *int     `json:"id,omitempty" jsonschema:"numeric project id; optional if project is set"`
+	ProjectID  *int     `json:"projectId,omitempty" jsonschema:"alias for id"`
+	Query      string   `json:"query,omitempty" jsonschema:"alias for project"`
+	Title      string   `json:"title,omitempty" jsonschema:"bug title"`
+	Body       string   `json:"body,omitempty" jsonschema:"optional markdown body; applied to each title when using titles"`
+	Titles     []string `json:"titles,omitempty" jsonschema:"todo list of bug titles; use instead of or with title"`
+}
+
+func (in createBugInput) ref() (*int, string) {
+	for _, s := range []string{in.Project, in.Identifier, in.Query} {
+		if p := strings.TrimSpace(s); p != "" {
+			return nil, p
+		}
+	}
+	if in.ID != nil {
+		return in.ID, ""
+	}
+	return in.ProjectID, ""
 }
 
 type projectStatusInput struct {
