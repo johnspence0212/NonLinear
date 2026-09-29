@@ -45,12 +45,11 @@ type HomeToday struct {
 }
 
 type HomeView struct {
-	Claimed  []IssueSummary  `json:"claimed"`
-	Frontier []IssueSummary  `json:"frontier"`
-	Blocked  []IssueSummary  `json:"blocked"`
-	Events   []Event         `json:"events"`
-	Focus    *ProjectSummary `json:"focus,omitempty"`
-	Today    HomeToday       `json:"today"`
+	Claimed  []IssueSummary `json:"claimed"`
+	Frontier []IssueSummary `json:"frontier"`
+	Blocked  []IssueSummary `json:"blocked"`
+	Events   []Event        `json:"events"`
+	Today    HomeToday      `json:"today"`
 }
 
 func EventDot(kind string) string {

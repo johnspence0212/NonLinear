@@ -40,9 +40,6 @@ func TestHomeActivityAndPagingLists(t *testing.T) {
 	}
 
 	home := s.Home()
-	if home.Focus == nil || home.Focus.ID != p.ID {
-		t.Fatalf("focus: %+v", home.Focus)
-	}
 	if len(home.Claimed) != 2 {
 		t.Fatalf("claimed: %d %+v", len(home.Claimed), home.Claimed)
 	}

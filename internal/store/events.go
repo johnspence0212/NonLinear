@@ -42,7 +42,6 @@ func (s *Store) Home() model.HomeView {
 		Frontier: frontier,
 		Blocked:  blocked,
 		Events:   events,
-		Focus:    s.focusProjectLocked(events),
 		Today:    countToday(events, time.Now().UTC()),
 	}
 }
@@ -56,28 +55,6 @@ func sortSummaries(items []model.IssueSummary, byID map[int]model.Issue) {
 		}
 		return items[i].ID > items[j].ID
 	})
-}
-
-func (s *Store) focusProjectLocked(events []model.Event) *model.ProjectSummary {
-	for _, ev := range events {
-		if ev.ProjectID == nil {
-			continue
-		}
-		p := s.findProjectLocked(*ev.ProjectID)
-		if p == nil {
-			continue
-		}
-		sum := model.ProjectSummary{
-			ID:          p.ID,
-			Identifier:  p.Identifier,
-			Title:       p.Title,
-			Stage:       model.DeriveStage(s.issuesForProjectLocked(p.ID)),
-			Destination: model.ProjectDestination(*p, s.db.Issues),
-			Repo:        p.Repo,
-		}
-		return &sum
-	}
-	return nil
 }
 
 func countToday(events []model.Event, now time.Time) model.HomeToday {

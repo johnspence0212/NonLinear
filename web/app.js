@@ -833,7 +833,6 @@ async function renderHome() {
   const frontier = homePaged(home.frontier, "frontier");
   const blocked = homePaged(home.blocked, "blocked");
   const events = homePaged(home.events, "events");
-  const focus = home.focus;
   const today = home.today || {};
   state.issues = (home.frontier || []).concat(home.claimed || []);
   if (state.selected >= state.issues.length) state.selected = 0;
@@ -856,15 +855,6 @@ async function renderHome() {
     });
   });
   rail.innerHTML =
-    (focus
-      ? box(
-          "<strong>this project</strong>",
-          railLines([
-            ["focus", `${focus.identifier} ${focus.title}`],
-            ["stage", focus.stage || "wayfinding"],
-          ])
-        )
-      : "") +
     box(
       "<strong>today</strong>",
       railLines([

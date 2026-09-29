@@ -134,7 +134,7 @@ Left nav is **home** and **projects**. A **Project** is the parent of Decision M
 
 | View | Shows |
 | --- | --- |
-| `home` | Now strip (**claimed** / **frontier** / **waiting**) plus an activity log. Each list shows 5 rows with **next** to page (wraps). Labels sit in the right rail |
+| `home` | Now strip (**claimed** / **frontier** / **waiting**) plus an activity log. Each list shows 5 rows with **next** to page (wraps). Today counts and labels sit in the right rail |
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `#/tag/{label}` | Every issue with that tag: maps, specs, tickets. Header search jumps here when the query is an exact catalog tag (`wayfinder:grilling` or `#wayfinder:grilling`) |
 | `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
