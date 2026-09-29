@@ -18,10 +18,10 @@ The UI is `http://localhost:3333`. Issue identity is the numeric `id`. Display n
 
 ## Conventions
 
-- **Create an issue**: MCP `create_issue` with `title` and markdown `body`. Optional `labels`, `parentId`, `project`.
+- **Create an issue**: MCP `create_issue` with `title` and markdown `body`. Optional `labels`, `parentId`, `project`, `blockedBy`. Returns a compact confirmation (`id`, `identifier`, `state`, `blockedBy`, `frontier`). Use `get_issue` for the full object.
 - **Read an issue**: MCP `get_issue` with `id`. Returns body, comments, children, `blockers` (what this waits on), `blocks` (what waits on this), `linked` maps, and `frontier` / `blocked` flags.
-- **List issues**: MCP `list_issues`. Filters: `state` (`open`/`closed`), `labels` (AND), `parentId`, `assignee` (`unassigned` for unclaimed), `project`, `query`, `frontier`.
-- **Comment**: MCP `add_comment` with `id` and markdown `body`. Edit later with `update_comment` (`commentId` + `body`).
+- **List issues**: MCP `list_issues`. Compact summaries (no bodies, comments, or child collections). Filters: `state` (`open`/`closed`), `labels` (AND), `parentId`, `assignee` (`unassigned` for unclaimed), `project`, `query`, `frontier`.
+- **Comment**: MCP `add_comment` with `id` and markdown `body`. Returns `commentId`. Historical comments stay on `get_issue`. Edit later with `update_comment` (`commentId` + `body`).
 - **Labels**: `list_labels` to see seed + catalog + in-use tags. `create_label` with `label` adds a tag to the catalog (idempotent, strips a leading `#`) so it shows in the UI before any issue uses it. `add_label` with `id` + `label` appends a tag to an issue without replacing existing labels. You can still pass `labels` on `create_issue` / `update_issue`. Canonical triage strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 - **Close**: MCP `update_issue` with `state: "closed"`, or `resolve_issue` (comment + close).
 
@@ -40,8 +40,8 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 - **Map**: `create_issue` with `labels: ["wayfinder:map"]`. Body holds Destination / Notes / Decisions so far / Not yet specified / Out of scope.
 - **Child ticket**: `create_issue` with `parentId` set to the map's `id`, `labels: ["wayfinder:<type>"]` where type is `research`, `prototype`, `grilling`, or `task`. Create tickets first, then wire blocking (issues need ids before they can reference each other).
 - **Another map on the same Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId` set to the Project id. Sibling maps live on the Project; the map UI does not show linked-map edges. `linkedMapId` still creates a map, records an optional bidirectional edge, and attaches it to the source map's Project — prefer `projectId`. `set_linked_maps` (`id` + `mapIds`) only maintains those optional edges (pass `mapIds: []` to unlink). Linking does not nest, group, or cascade-delete. Export of a single map drops edges that pointed at maps outside the bundle.
-- **Blocking**: `set_blocked_by` with the child `id` and `issueIds` of the issues that block it. Canonical, UI-visible. A ticket is unblocked when every blocker is `closed`.
-- **Frontier query**: `list_frontier` with `parentId` equal to the map's `id`. Returns `{next, issues}` — open, unblocked, unassigned children, maps excluded, ordered by id. Use `next`. Do not pick from `get_issue` children (those include closed tickets). Equivalent: `list_issues` with `parentId`, `state: "open"`, `frontier: true`.
+- **Blocking**: `set_blocked_by` with the child `id` and `issueIds` of the issues that block it (`blockedBy` is an alias). The write returns the persisted `blockedBy`, `blocked`, `openBlockers`, and `frontier` flags. Canonical, UI-visible. A ticket is unblocked when every blocker is `closed`. `create_issue` can also take `blockedBy` when the blocker ids already exist.
+- **Frontier query**: `list_frontier` with `parentId` equal to the map's `id`. Returns `{next, issues}` compact summaries — open, unblocked, unassigned children, maps excluded, ordered by id. Use `next.id`. Do not pick from `get_issue` children (those include closed tickets). Equivalent: `list_issues` with `parentId`, `state: "open"`, `frontier: true`.
 - **Claim**: `claim_issue` with the ticket `id` (optional `assignee`, default `cursor`). The session's first write. An open unassigned ticket is unclaimed.
 - **Resolve**: `resolve_issue` with `id` and `answer` (posts a resolution comment and closes). Then `update_issue` the map body to append a context pointer under Decisions so far: ticket **title** as the link text, one-line gist of the answer. Do not restate the full decision on the map.
 - **Delete a map**: `delete_issue` with the map `id`. Cascades to every child ticket and strips leftover blocked-by and linked-map edges. Linked maps themselves are not deleted.
@@ -53,14 +53,14 @@ Used by `/wayfinder`. The **map** is a single issue with **child** issues as tic
 
 A **Project** (`P-{id}`) parents Decision Maps → Spec → Tickets. Sibling maps belong to the Project. Stage is derived (never stored). Tags are classification only. The UI can launch `/to-spec` and `/to-tickets` through the Cursor CLI. MCP lifecycle calls still do not fill the document.
 
-- **Project**: `list_projects`, `get_project` (`id` is the project id), `create_project` (`title`, optional `destination`, optional `repo`), `update_project` (`id`, optional `title` / `destination` / `repo`). `repo` is the folder Cursor uses for that Project; empty falls back to the server default. Creating a map does not create a Project.
+- **Project**: `list_projects` (compact summaries), `get_project` (`id` is the project id; full artifact bodies), `create_project` (`title`, optional `destination`, optional `repo`), `update_project` (`id`, optional `title` / `destination` / `repo`). Writes return a compact confirmation. `repo` is the folder Cursor uses for that Project; empty falls back to the server default. Creating a map does not create a Project.
 - **Project status**: when the user says “Give me the status of P-8”, call `get_project_status` with `project: "P-8"` (also `id`, `query`, or a title). Returns compact JSON (`kind: nonlinear.project-status`): derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier / claimed / blocked tickets, `next` (same rule as `list_frontier`), and `nextAction` (suggested MCP tool + id). Use `get_project` / `get_issue` to zoom into bodies.
 - **Add a map to a Project**: `create_issue` with `labels: ["wayfinder:map"]` and `projectId`. Prefer this over `linkedMapId`.
 - **Move onto a project**: `move_to_project` with `projectId` (destination) and either `id` (one issue + descendants) or `fromProjectId` (every issue currently on that Project). Use this to put a standalone map onto a Project.
 - **Delete a project**: `delete_project` with the project `id`. Cascades to maps, specs, plans, and tickets on it. Empty projects can be deleted.
 - **Ready for spec**: `ready_for_spec` with the map `id`. Explicit; not inferred from closed tickets.
 - **Create spec**: `create_spec` with the map `id` (map must be `ready_for_spec`). Draft spec, empty to-spec skeleton, `derivedFromArtifactId` = map. Destination copied from the map body if present.
-- **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Fill the SPEC body via `/to-spec`, not the map.
+- **Make the spec in one step**: `advance_to_spec` with the map `id`. Marks ready and creates the draft spec. Returns the spec `id` / `identifier` / `kind`. Fill that spec with `update_issue` (`kind: "spec"`) — a specification body written onto a decision map is rejected.
 - **Approve spec**: `approve_spec` with the spec `id`.
 - **Create tickets**: `create_plan` with an approved spec `id`. Draft Tickets list; implementation tickets are children (`parentId` = that id). Same `blockedBy` / claim / frontier rules as map tickets.
 - **Make Tickets in one step**: `advance_to_plan` with a map or spec `id`. Creates that map's spec if needed, approves it, and creates a new Tickets list. Do not attach tickets to another map's list. Parent each implementation ticket to the returned id.

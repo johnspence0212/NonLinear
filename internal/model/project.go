@@ -83,6 +83,71 @@ func IsArtifact(issue Issue) bool {
 	return IsMap(issue) || IsSpec(issue) || IsPlan(issue)
 }
 
+// ArtifactKind is the canonical kind string for an issue.
+func ArtifactKind(issue Issue) string {
+	switch {
+	case IsSpec(issue):
+		return KindSpec
+	case IsPlan(issue):
+		return KindPlan
+	case IsMap(issue):
+		return KindDecisionMap
+	case issue.Kind != "":
+		return issue.Kind
+	default:
+		return KindTicket
+	}
+}
+
+// KindMatches reports whether issue is the expected artifact kind.
+// Accepts aliases: map, wayfinder:map, tickets, issue.
+func KindMatches(issue Issue, want string) bool {
+	want = strings.ToLower(strings.TrimSpace(want))
+	if want == "" {
+		return true
+	}
+	switch want {
+	case "map", "wayfinder:map":
+		want = KindDecisionMap
+	case "tickets":
+		want = KindPlan
+	case "issue":
+		want = KindTicket
+	}
+	return ArtifactKind(issue) == want
+}
+
+// LooksLikeSpecBody reports whether body is a to-spec document rather than a
+// decision map. Used to reject writing a specification onto a map.
+func LooksLikeSpecBody(body string) bool {
+	need := 0
+	for _, heading := range []string{
+		"Problem Statement",
+		"Solution",
+		"User Stories",
+		"Implementation Decisions",
+		"Testing Decisions",
+	} {
+		if hasMarkdownHeading(body, heading) {
+			need++
+		}
+	}
+	return need >= 3
+}
+
+func hasMarkdownHeading(body, heading string) bool {
+	for _, line := range strings.Split(body, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "## ") {
+			continue
+		}
+		if strings.EqualFold(strings.TrimSpace(trimmed[3:]), heading) {
+			return true
+		}
+	}
+	return false
+}
+
 func ExtractDestination(body string) string {
 	lines := strings.Split(body, "\n")
 	in := false

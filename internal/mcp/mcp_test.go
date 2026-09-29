@@ -15,6 +15,75 @@ import (
 	"github.com/johnspence0212/NonLinear/internal/store"
 )
 
+func startMCP(t *testing.T) (context.Context, *mcp.ClientSession) {
+	t.Helper()
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	handler := mcp.NewStreamableHTTPHandler(func(r *http.Request) *mcp.Server {
+		return New(st)
+	}, &mcp.StreamableHTTPOptions{Stateless: true, JSONResponse: true})
+	httpServer := httptest.NewServer(handler)
+	t.Cleanup(httpServer.Close)
+
+	ctx := context.Background()
+	client := mcp.NewClient(&mcp.Implementation{Name: "test", Version: "v0.0.1"}, nil)
+	session, err := client.Connect(ctx, &mcp.StreamableClientTransport{Endpoint: httpServer.URL}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = session.Close() })
+	return ctx, session
+}
+
+func callRaw(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) *mcp.CallToolResult {
+	t.Helper()
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.IsError {
+		t.Fatalf("%s: %v", name, res.Content)
+	}
+	return res
+}
+
+func callOK(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) map[string]any {
+	t.Helper()
+	return toolJSON(t, callRaw(t, ctx, session, name, args))
+}
+
+func callErr(t *testing.T, ctx context.Context, session *mcp.ClientSession, name string, args map[string]any) string {
+	t.Helper()
+	res, err := session.CallTool(ctx, &mcp.CallToolParams{Name: name, Arguments: args})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsError {
+		t.Fatalf("%s: expected error, got %v", name, res.Content)
+	}
+	if len(res.Content) == 0 {
+		t.Fatalf("%s: error with no content", name)
+	}
+	tc, ok := res.Content[0].(*mcp.TextContent)
+	if !ok {
+		t.Fatalf("%s: error content %v", name, res.Content)
+	}
+	return tc.Text
+}
+
+func intID(obj map[string]any) int {
+	switch v := obj["id"].(type) {
+	case float64:
+		return int(v)
+	case int:
+		return v
+	default:
+		return 0
+	}
+}
+
 func TestMCPCreateAndFrontier(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {
@@ -364,9 +433,9 @@ func TestMCPLinkedMaps(t *testing.T) {
 		t.Fatalf("%v", spawned.Content)
 	}
 	spawnedJSON := toolJSON(t, spawned)
-	linked, _ := spawnedJSON["linked"].([]any)
+	linked, _ := spawnedJSON["linkedMaps"].([]any)
 	if len(linked) != 1 {
-		t.Fatalf("linked: %v", spawnedJSON)
+		t.Fatalf("linkedMaps: %v", spawnedJSON)
 	}
 
 	cleared, err := session.CallTool(ctx, &mcp.CallToolParams{
@@ -382,7 +451,7 @@ func TestMCPLinkedMaps(t *testing.T) {
 	if cleared.IsError {
 		t.Fatalf("%v", cleared.Content)
 	}
-	if got, _ := toolJSON(t, cleared)["linked"].([]any); len(got) != 0 {
+	if got, _ := toolJSON(t, cleared)["linkedMaps"].([]any); len(got) != 0 {
 		t.Fatalf("unlink: %v", toolJSON(t, cleared))
 	}
 }
