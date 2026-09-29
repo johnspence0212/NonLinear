@@ -17,6 +17,17 @@ const state = {
   homePage: { claimed: 0, frontier: 0, blocked: 0, events: 0 },
 };
 
+function navFilter(name) {
+  return name === "projects" ? "projects" : "home";
+}
+
+function setFilter(name) {
+  state.filter = navFilter(name);
+  localStorage.setItem("nl-filter", state.filter);
+}
+
+setFilter(state.filter);
+
 const $ = (sel, el = document) => el.querySelector(sel);
 const main = $("#main");
 const rail = $("#rail");
@@ -48,6 +59,23 @@ function activeTag() {
 
 function tagHref(label) {
   return "#/tag/" + encodeURIComponent(label);
+}
+
+function knownLabel(q) {
+  const raw = String(q || "")
+    .trim()
+    .replace(/^#+/, "");
+  if (!raw) return "";
+  const hit = (state.labels || []).find((l) => l.toLowerCase() === raw.toLowerCase());
+  return hit || "";
+}
+
+function searchHash(q) {
+  const trimmed = String(q || "").trim();
+  if (!trimmed) return "#/";
+  const tag = knownLabel(trimmed);
+  if (tag) return tagHref(tag);
+  return "#/search/" + encodeURIComponent(trimmed);
 }
 
 function tagButtons(labels) {
@@ -403,6 +431,13 @@ function railLines(rows) {
     .join("")}</div>`;
 }
 
+function labelsBox() {
+  return box(
+    "<strong>labels</strong>",
+    `<div class="tags">${tagButtons(state.labels) || `<span class="muted">none</span>`}</div>`
+  );
+}
+
 function renderRail(extraHTML = "") {
   const s = state.stats;
   rail.innerHTML =
@@ -417,28 +452,14 @@ function renderRail(extraHTML = "") {
         ["closed", s.closed],
       ])
     ) +
-    box(
-      "<strong>labels</strong>",
-      `<div class="tags">${tagButtons(state.labels) || `<span class="muted">none</span>`}</div>`
-    ) +
+    labelsBox() +
     extraHTML;
 }
 
 async function loadList() {
-  if (state.filter === "projects") {
-    const data = await api("/api/projects");
-    state.projects = data.projects || [];
-    if (state.selected >= state.projects.length) state.selected = 0;
-    return;
-  }
-  const q = new URLSearchParams();
-  if (state.filter === "open" || state.filter === "closed") q.set("state", state.filter);
-  if (state.filter === "frontier") q.set("frontier", "1");
-  if (state.filter === "maps") q.set("labels", "wayfinder:map");
-  const data = await api("/api/issues?" + q.toString());
-  const fetched = data.issues || [];
-  state.issues = state.filter === "maps" ? fetched : fetched.filter((i) => !isArtifact(i));
-  if (state.selected >= state.issues.length) state.selected = 0;
+  const data = await api("/api/projects");
+  state.projects = data.projects || [];
+  if (state.selected >= state.projects.length) state.selected = 0;
 }
 
 async function loadMapChildren(mapId) {
@@ -574,79 +595,40 @@ function statStrip() {
 }
 
 function renderTagList(label) {
-  if (label === "wayfinder:map") {
-    const rows = state.issues.map((issue, i) => ticketHTML(issue, i === state.selected)).join("");
-    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-      `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
-      rows || `<div class="empty">no maps with this tag</div>`,
-      composeBar("new map with this tag")
-    )}`;
-    bindCompose({ labels: [label] });
-    syncChrome();
-    return;
-  }
-  const groups = groupTicketsByMap(state.issues);
+  const maps = state.issues.filter(isMap);
+  const extras = state.issues.filter((i) => isSpec(i) || isPlan(i));
+  const groups = groupTicketsByMap(state.issues.filter((i) => !isArtifact(i)));
   state.issues = flattenGroups(groups, true);
+  if (state.selected >= state.issues.length) state.selected = 0;
+  const n = maps.length + extras.length + state.issues.length;
+  const mapCompose = label === "wayfinder:map" ? composeBar("new map with this tag") : "";
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-    `<strong>#${esc(label)}</strong><a href="#/" class="muted">clear</a>`,
+    `<strong>#${esc(label)}</strong><span>${n} match${n === 1 ? "" : "es"}</span><a href="#/" class="muted">clear</a>`,
+    [...maps.map((m) => mapRowHTML(m)), ...extras.map(artifactRowHTML)].join("") || `<div class="empty">no maps or specs with this tag</div>`,
+    mapCompose
+  )}${box(
+    `<strong>tickets</strong><span>by map</span>`,
     groupedTicketHTML(groups, true) || `<div class="empty">no tickets with this tag</div>`,
-    ticketHint()
+    label === "wayfinder:map" ? "" : ticketHint()
   )}`;
+  if (label === "wayfinder:map") bindCompose({ labels: [label] });
   syncChrome();
 }
 
 async function loadTag(label) {
   const data = await api("/api/issues?" + new URLSearchParams({ labels: label }).toString());
-  const fetched = data.issues || [];
-  state.issues = label === "wayfinder:map" ? fetched : fetched.filter((i) => !isArtifact(i));
+  state.issues = data.issues || [];
   if (state.selected >= state.issues.length) state.selected = 0;
 }
 
 function renderList() {
-  if (state.filter === "projects") {
-    const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
-    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-      `<strong>projects</strong><span>decision map → spec → tickets</span>`,
-      rows || `<div class="empty">no projects — compose one or create a map</div>`,
-      composeBar("new project", "compose", "project")
-    )}`;
-    bindProjectCompose();
-    syncChrome();
-    return;
-  }
-  if (state.filter === "maps") {
-    const rows = state.issues.map((issue, i) => mapRowHTML(issue, i === state.selected, true)).join("");
-    main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-      `<strong>maps</strong><button type="button" data-import-map>import</button>`,
-      rows || `<div class="empty">none</div>`,
-      composeBar("new map")
-    )}`;
-    bindCompose({ labels: ["wayfinder:map"] });
-    syncChrome();
-    return;
-  }
-  const split = state.filter === "open" || state.filter === "all";
-  const title =
-    state.filter === "frontier" ? "frontier" : state.filter === "open" ? "open" : state.filter === "closed" ? "closed" : "all";
-  const caption =
-    state.filter === "frontier"
-      ? "open, unblocked, and unclaimed"
-      : state.filter === "open"
-        ? "all unfinished · frontier, claimed, and waiting on a blocker"
-        : state.filter === "closed"
-          ? "resolved tickets by map"
-          : "every ticket by map";
-  const empty =
-    state.filter === "frontier"
-      ? "nothing on the frontier — blocked and claimed tickets are under open"
-      : "no tickets — open a map to add one";
-  const groups = groupTicketsByMap(state.issues);
-  state.issues = flattenGroups(groups, split);
+  const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-    `<strong>${title}</strong><span>${caption}</span>`,
-    groupedTicketHTML(groups, split) || `<div class="empty">${empty}</div>`,
-    ticketHint()
+    `<strong>projects</strong><span>decision map → spec → tickets</span>`,
+    rows || `<div class="empty">no projects — compose one or create a map</div>`,
+    composeBar("new project", "compose", "project")
   )}`;
+  bindProjectCompose();
   syncChrome();
 }
 
@@ -891,7 +873,8 @@ async function renderHome() {
         ["created", today.created || 0],
         ["lifecycle", today.lifecycle || 0],
       ])
-    );
+    ) +
+    labelsBox();
   syncChrome();
 }
 
@@ -900,8 +883,7 @@ function bindJump(name) {
   if (!jump) return;
   jump.addEventListener("click", (e) => {
     e.preventDefault();
-    state.filter = name;
-    localStorage.setItem("nl-filter", name);
+    setFilter(name);
     location.hash = "#/";
     paint();
   });
@@ -914,22 +896,17 @@ function goBack() {
     return;
   }
   if (r.name === "project") {
-    state.filter = "projects";
-    localStorage.setItem("nl-filter", "projects");
+    setFilter("projects");
     if (location.hash.replace(/^#/, "") === "/") paint();
     else location.hash = "#/";
     return;
   }
   if (r.name === "map") {
-    state.filter = "maps";
-    localStorage.setItem("nl-filter", "maps");
-    if (location.hash.replace(/^#/, "") === "/") paint();
-    else location.hash = "#/";
+    location.hash = state.issueBackHref || "#/";
     return;
   }
   if (r.name === "list") {
-    state.filter = "home";
-    localStorage.setItem("nl-filter", "home");
+    setFilter("home");
     paint();
     return;
   }
@@ -951,39 +928,20 @@ function ensurePageBack() {
   if (!existing) main.insertAdjacentHTML("afterbegin", pageBackHTML());
 }
 
-function issuesNavOpen() {
-  try {
-    return localStorage.getItem("nl-nav-issues") === "1";
-  } catch {
-    return false;
-  }
-}
-
-function setIssuesNavOpen(open) {
-  localStorage.setItem("nl-nav-issues", open ? "1" : "0");
-}
-
-function renderNav() {
-  const open = issuesNavOpen();
-  const btn = document.querySelector("[data-nav-toggle=issues]");
-  const chev = btn?.querySelector(".nav-chev");
-  const kids = document.querySelector("#nav-issues .nav-kids");
-  if (btn) {
-    btn.setAttribute("aria-expanded", String(open));
-    btn.setAttribute("aria-label", open ? "collapse issues" : "expand issues");
-  }
-  if (chev) chev.textContent = open ? "▾" : "▸";
-  if (kids) kids.hidden = !open;
-}
-
 function syncChrome() {
   syncFootRepo();
   const r = route();
-  renderNav();
   document.querySelectorAll("nav [data-filter]").forEach((b) => {
-    const onMap = r.name === "map" && b.dataset.filter === "maps";
-    const onProject = r.name === "project" && b.dataset.filter === "projects";
-    b.classList.toggle("active", onMap || onProject || (r.name === "list" && b.dataset.filter === state.filter));
+    const f = b.dataset.filter;
+    const onHome = f === "home" && r.name === "list" && state.filter === "home";
+    const onProjects =
+      f === "projects" &&
+      (r.name === "project" ||
+        r.name === "map" ||
+        r.name === "spec" ||
+        r.name === "plan" ||
+        (r.name === "list" && state.filter === "projects"));
+    b.classList.toggle("active", onHome || onProjects);
   });
   const settings = document.querySelector("nav > [data-go=settings]");
   if (settings) settings.classList.toggle("active", r.name === "settings");
@@ -1009,6 +967,7 @@ async function renderMap(id) {
     return;
   }
   setViewRepo((project && project.repo) || (map.projectRef && map.projectRef.repo));
+  state.issueBackHref = map.projectRef ? `#/project/${map.projectRef.id}` : "#/";
   const filters = ["open", "frontier", "closed", "all"]
     .map((f) => `<button data-map-filter="${f}" class="${f === state.mapChildFilter ? "active" : ""}">${f}</button>`)
     .join("");
@@ -1766,7 +1725,9 @@ async function paint() {
   }
   try {
     const si = $("#global-search");
-    if (si && document.activeElement !== si) si.value = r.name === "search" ? r.query : "";
+    if (si && document.activeElement !== si) {
+      si.value = r.name === "search" ? r.query : r.name === "tag" ? "#" + r.label : "";
+    }
     if (r.name === "list" && state.filter === "home") {
       try {
         state.error = "";
@@ -1953,14 +1914,6 @@ async function renderSettings() {
 }
 
 document.querySelector("nav").addEventListener("click", (e) => {
-  const tog = e.target.closest("[data-nav-toggle]");
-  if (tog) {
-    e.preventDefault();
-    const open = !issuesNavOpen();
-    setIssuesNavOpen(open);
-    renderNav();
-    return;
-  }
   const settings = e.target.closest("[data-go=settings]");
   if (settings) {
     showSettingsLoading();
@@ -1969,9 +1922,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
   }
   const b = e.target.closest("[data-filter]");
   if (!b) return;
-  state.filter = b.dataset.filter;
-  localStorage.setItem("nl-filter", state.filter);
-  if (state.filter !== "home") setIssuesNavOpen(true);
+  setFilter(b.dataset.filter);
   location.hash = "#/";
   paint();
 });
@@ -1979,7 +1930,7 @@ document.querySelector("nav").addEventListener("click", (e) => {
 document.getElementById("search-form").addEventListener("submit", (e) => {
   e.preventDefault();
   const q = document.getElementById("global-search").value.trim();
-  location.hash = q ? "#/search/" + encodeURIComponent(q) : "#/";
+  location.hash = searchHash(q);
 });
 
 document.getElementById("global-search").addEventListener("keydown", (e) => {

@@ -938,10 +938,12 @@ func match(issue model.Issue, filter ListFilter, byID map[int]model.Issue) bool 
 		return false
 	}
 	if q := strings.TrimSpace(filter.Query); q != "" {
-		q = strings.ToLower(q)
-		blob := strings.ToLower(issue.Identifier + " " + issue.Title + " " + issue.Body)
-		if !strings.Contains(blob, q) {
-			return false
+		q = strings.ToLower(strings.TrimLeft(q, "#"))
+		if q != "" {
+			blob := strings.ToLower(issue.Identifier + " " + issue.Title + " " + issue.Body + " " + strings.Join(issue.Labels, " "))
+			if !strings.Contains(blob, q) {
+				return false
+			}
 		}
 	}
 	if filter.FrontierOnly && !model.IsFrontier(issue, byID) {

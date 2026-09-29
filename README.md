@@ -126,30 +126,28 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 `get_project_status` is the big-picture read. In Cursor, “Give me the status of P-8” should call it with `project: "P-8"` (also accepts `id` or `query` / title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=P-8`. Use `get_project` when you need full artifact bodies.
 
-`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from maps, home, or settings.
+`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from settings.
 
 ## Views
 
-Left nav is global. **home** is the boxed dashboard (frontier tickets grouped by map, plus projects and maps). A **Project** is the parent of Decision Maps → Spec → Tickets. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
+Left nav is **home** and **projects**. A **Project** is the parent of Decision Maps → Spec → Tickets. Maps still open at `#/map/12`. Add another map from the project view (or `create_issue` with `projectId`); sibling maps live on the Project. Optional `linkedMaps` edges do not appear on the map and do not group anything.
 
 | View | Shows |
 | --- | --- |
-| `home` | Now strip (**claimed** / **frontier** / **waiting**) plus an activity log. Each list shows 5 rows with **next** to page (wraps). Projects and maps stay under issues |
+| `home` | Now strip (**claimed** / **frontier** / **waiting**) plus an activity log. Each list shows 5 rows with **next** to page (wraps). Labels sit in the right rail |
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
-| `maps` | Wayfinder maps only (with a new-map box and import) |
-| `open` | All unfinished tickets, grouped by map, split into frontier / claimed / waiting on a blocker |
-| `frontier` | Only frontier tickets: open, unblocked, unclaimed (not a map, spec, or plan) |
-| `closed` / `all` | Tickets only, never maps, grouped by parent map; map-less tickets land under inbox. No compose here — add tickets from inside a map |
+| `#/tag/{label}` | Every issue with that tag: maps, specs, tickets. Header search jumps here when the query is an exact catalog tag (`wayfinder:grilling` or `#wayfinder:grilling`) |
+| `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
 | `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows; compose another map onto this Project |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
 | `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
 
-Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
+Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. Type that catalog tag in the header search (`/`) to land on the same view. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
 
-Export a map from the map view (map + tickets + comments + in-map blockers) as a `.nlmap.json` file. Import that file from **maps**, **home**, or **settings** — ids are remapped so it lands as a new map, even on the same tracker.
+Export a map from the map view (map + tickets + comments + in-map blockers) as a `.nlmap.json` file. Import that file from **settings** — ids are remapped so it lands as a new map, even on the same tracker.
 
-The header search (`/`) matches identifier, title, and body across maps and tickets, split into maps + tickets-by-map boxes.
+The header search (`/`) matches identifier, title, body, and labels. An exact catalog tag (with or without `#`) opens the tag view so maps and tickets with that tag come back.
 
 ## Keyboard (UI)
 

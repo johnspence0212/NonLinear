@@ -163,6 +163,35 @@ func TestListFilters(t *testing.T) {
 	}
 }
 
+func TestQueryMatchesLabels(t *testing.T) {
+	s := testStore(t)
+	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	parent := m.ID
+	tagged, err := s.Create(CreateIssue{Title: "Silent ticket", Labels: []string{"wayfinder:grilling"}, ParentID: &parent})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Create(CreateIssue{Title: "Other", Labels: []string{"needs-triage"}, ParentID: &parent}); err != nil {
+		t.Fatal(err)
+	}
+
+	got := s.List(ListFilter{Query: "#grilling"})
+	if len(got) != 1 || got[0].ID != tagged.ID {
+		t.Fatalf("hash query: %v", ids(got))
+	}
+	got = s.List(ListFilter{Query: "wayfinder:grilling"})
+	if len(got) != 1 || got[0].ID != tagged.ID {
+		t.Fatalf("label query: %v", ids(got))
+	}
+	got = s.List(ListFilter{Query: "grilling"})
+	if len(got) != 1 || got[0].ID != tagged.ID {
+		t.Fatalf("substring: %v", ids(got))
+	}
+}
+
 func TestDeleteCascadesAndCleansBlockers(t *testing.T) {
 	s := testStore(t)
 	m, err := s.Create(CreateIssue{Title: "Map", Labels: []string{"wayfinder:map"}})

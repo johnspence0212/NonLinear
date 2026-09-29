@@ -20,7 +20,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Activity** — append-only event log on `db.json` (`events`, newest first, capped at 200). Written on create / claim / resolve / comment / block / lifecycle. Home is `GET /api/home`: claimed, frontier, blocked, events. The UI pages each list 5 at a time.
 
-**Tags** — classification only (`wayfinder:*`, triage, catalog). They do not encode lifecycle or stage.
+**Tags** — classification only (`wayfinder:*`, triage, catalog). They do not encode lifecycle or stage. The UI nav is **home** and **projects**; find work by header search (matches tags) or the labels rail.
 
 **Frontier** — open + unblocked + unclaimed tickets that are not a map, spec, or plan.
 

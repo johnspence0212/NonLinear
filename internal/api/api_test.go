@@ -598,6 +598,30 @@ func TestCursorRunHTTP(t *testing.T) {
 	}
 }
 
+func TestIssueQueryMatchesLabels(t *testing.T) {
+	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	mux := http.NewServeMux()
+	(&Handler{Store: st}).Register(mux)
+
+	mapIssue := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":  "Map",
+		"labels": []string{"wayfinder:map"},
+	})
+	tagged := postJSON(t, mux, "/api/issues", map[string]any{
+		"title":    "Silent ticket",
+		"labels":   []string{"wayfinder:grilling"},
+		"parentId": mapIssue["id"],
+	})
+	listed := getJSON(t, mux, "/api/issues?query=%23grilling")
+	issues := listed["issues"].([]any)
+	if len(issues) != 1 || issues[0].(map[string]any)["id"] != tagged["id"] {
+		t.Fatalf("query #grilling: %v", listed)
+	}
+}
+
 func TestHomeHTTP(t *testing.T) {
 	st, err := store.Open(filepath.Join(t.TempDir(), "db.json"))
 	if err != nil {

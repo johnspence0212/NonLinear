@@ -429,7 +429,7 @@ type listInput struct {
 	ParentID *int     `json:"parentId,omitempty" jsonschema:"only children of this issue id"`
 	Assignee string   `json:"assignee,omitempty" jsonschema:"assignee name, or unassigned"`
 	Project  string   `json:"project,omitempty"`
-	Query    string   `json:"query,omitempty" jsonschema:"substring search on identifier, title, body"`
+	Query    string   `json:"query,omitempty" jsonschema:"substring search on identifier, title, body, and labels; a leading # is optional"`
 	Frontier bool     `json:"frontier,omitempty" jsonschema:"if true, only frontier tickets: open, unblocked, unclaimed"`
 }
 
