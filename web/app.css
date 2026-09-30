@@ -345,13 +345,20 @@ aside {
 }
 
 .box-h > .compose { margin-left: auto; flex: 0 0 auto; }
-.compose-open {
+.box-h .compose-open {
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  padding: 3px 10px;
   color: var(--muted);
   font-weight: 600;
   white-space: nowrap;
-  padding: 0;
+  user-select: none;
+  -webkit-user-select: none;
 }
-.compose-open:hover { color: var(--fg); }
+.box-h .compose-open:hover {
+  color: var(--fg);
+  border-color: var(--accent);
+}
 .compose-layer {
   position: fixed;
   inset: 0;

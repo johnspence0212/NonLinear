@@ -319,7 +319,7 @@ function composeBar(label, formId = "compose", kind = "issue") {
         <label class="edit-label">destination<textarea name="destination" placeholder="optional product writeup"></textarea></label>
         <label class="edit-label">repo<input name="repo" placeholder="optional folder for cursor" autocomplete="off" /></label>`
       : `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
-        <label class="edit-label">body${mdEditorHTML(formId + "-md", "markdown body")}</label>`;
+        <label class="edit-label">body${mdEditorHTML(formId + "-md", "markdown body", "", "write")}</label>`;
   return `<span class="compose" data-compose-root="${esc(formId)}">
     <button type="button" class="compose-open" data-compose-open>+ ${esc(label)}</button>
     <div class="compose-layer" hidden>
@@ -342,8 +342,8 @@ function stripComposeLayers() {
 function resetComposeForm(form) {
   if (!form) return;
   form.reset();
-  const preview = form.querySelector(".md-preview");
-  if (preview) preview.innerHTML = mdPreviewHTML("");
+  const editor = form.querySelector(".md-editor");
+  if (editor) showMdTab(editor, "write", { focus: false });
 }
 
 function closeOpenCompose() {
@@ -362,7 +362,7 @@ function bindCompose(extra, formId = "compose") {
   const openBtn = wrap.querySelector("[data-compose-open]");
   const layer = wrap.querySelector(".compose-layer");
   if (layer) document.body.appendChild(layer);
-  bindMdEditor(form.querySelector(".md-editor"));
+  bindMdEditor(form.querySelector(".md-editor"), "write");
   const show = (on) => {
     if (!layer) return;
     if (on) {
@@ -375,7 +375,10 @@ function bindCompose(extra, formId = "compose") {
     }
     layer.hidden = !on;
     document.body.classList.toggle("compose-open", on);
-    if (on) form.querySelector("[name=title]")?.focus();
+    if (on) {
+      showMdTab(form.querySelector(".md-editor"), "write", { focus: false });
+      form.querySelector("[name=title]")?.focus();
+    }
   };
   const hide = () => {
     resetComposeForm(form);
@@ -1363,33 +1366,37 @@ function mdPreviewHTML(src) {
   return text ? renderMarkdown(text) : `<span class="muted">nothing to preview</span>`;
 }
 
-function mdEditorHTML(id, placeholder, value = "") {
+function mdEditorHTML(id, placeholder, value = "", tab = "preview") {
+  const previewing = tab !== "write";
   return `<div class="md-editor" id="${id}">
     <div class="subnav md-tabs">
-      <button type="button" data-md-tab="write">write</button>
-      <button type="button" data-md-tab="preview" class="active">preview</button>
+      <button type="button" data-md-tab="write"${previewing ? "" : ` class="active"`}>write</button>
+      <button type="button" data-md-tab="preview"${previewing ? ` class="active"` : ""}>preview</button>
     </div>
-    <textarea name="body" placeholder="${placeholder}" hidden>${esc(value)}</textarea>
-    <div class="body md-preview">${mdPreviewHTML(value)}</div>
+    <textarea name="body" placeholder="${placeholder}"${previewing ? " hidden" : ""}>${esc(value)}</textarea>
+    <div class="body md-preview"${previewing ? "" : " hidden"}>${mdPreviewHTML(value)}</div>
   </div>`;
 }
 
-function bindMdEditor(root) {
+function showMdTab(root, tab, opts = {}) {
   if (!root) return;
   const ta = root.querySelector("textarea");
   const preview = root.querySelector(".md-preview");
-  const show = (tab) => {
-    root.querySelectorAll("[data-md-tab]").forEach((b) => b.classList.toggle("active", b.dataset.mdTab === tab));
-    const previewing = tab === "preview";
-    ta.hidden = previewing;
-    preview.hidden = !previewing;
-    if (previewing) preview.innerHTML = mdPreviewHTML(ta.value);
-    else ta.focus();
-  };
+  if (!ta || !preview) return;
+  root.querySelectorAll("[data-md-tab]").forEach((b) => b.classList.toggle("active", b.dataset.mdTab === tab));
+  const previewing = tab === "preview";
+  ta.hidden = previewing;
+  preview.hidden = !previewing;
+  if (previewing) preview.innerHTML = mdPreviewHTML(ta.value);
+  else if (opts.focus !== false) ta.focus();
+}
+
+function bindMdEditor(root, tab = "preview") {
+  if (!root) return;
   root.querySelectorAll("[data-md-tab]").forEach((btn) => {
-    btn.addEventListener("click", () => show(btn.dataset.mdTab));
+    btn.addEventListener("click", () => showMdTab(root, btn.dataset.mdTab));
   });
-  show("preview");
+  showMdTab(root, tab, { focus: false });
 }
 
 function commentEdited(c) {
