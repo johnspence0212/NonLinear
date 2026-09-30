@@ -10,22 +10,16 @@
   --take: #00e64d;
   --claim: #e0a84a;
   --warn: #e25b4c;
-  --banner-fg: #041204;
-  --banner-ph: #145218;
   --font: ui-monospace, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
   --radius: 6px;
 }
 [data-theme="orange"] {
   --accent: #e85d04;
   --take: #e85d04;
-  --banner-fg: #1c1208;
-  --banner-ph: #5a2a08;
 }
 [data-theme="cool"] {
   --accent: #5ba8e8;
   --take: #5ba8e8;
-  --banner-fg: #0a1620;
-  --banner-ph: #1a3d5c;
 }
 
 * { box-sizing: border-box; }
@@ -350,23 +344,55 @@ aside {
   white-space: nowrap;
 }
 
-.banner {
+.box-h > .compose { margin-left: auto; flex: 0 0 auto; }
+.compose-open {
+  color: var(--muted);
+  font-weight: 600;
+  white-space: nowrap;
+  padding: 0;
+}
+.compose-open:hover { color: var(--fg); }
+.compose-layer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
   display: flex;
   align-items: center;
-  gap: 8px;
-  width: 100%;
-  background: var(--accent);
-  color: var(--banner-fg);
-  padding: 8px 12px;
-  font-weight: 600;
-  text-align: left;
+  justify-content: center;
+  padding: 24px;
+}
+.compose-layer[hidden] { display: none !important; }
+.compose-scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
   cursor: pointer;
+  border: 0;
+  padding: 0;
 }
-.banner:hover { filter: brightness(1.08); }
-.compose-form {
-  border-top: 1px solid var(--line);
+.compose-card {
+  position: relative;
+  z-index: 1;
+  width: min(540px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
   background: var(--bg-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.45);
 }
+.compose-card-h {
+  display: flex;
+  align-items: center;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--line);
+  color: var(--muted);
+}
+.compose-card-h strong { color: var(--fg); font-weight: 600; }
+.compose-card-b { padding: 14px; }
+.compose-card .edit-label textarea { min-height: 140px; }
+.compose-card .md-preview { min-height: 140px; }
+body.compose-open { overflow: hidden; }
 
 .edit-label {
   display: flex;

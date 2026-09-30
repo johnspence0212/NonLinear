@@ -14,7 +14,7 @@ Local JSON issue tracker. Agents are the primary user.
 
 **Tickets** — an issue with `kind=plan`, derived from an approved spec. Lifecycle: `draft` → `active` → `delivered`. Implementation tickets are children of this list. Open at `#/plan/{id}`. The UI calls this Tickets; **to tickets** creates it and runs `/to-tickets`.
 
-**Bug** — a project-level work item (`kind=bug`), not a map/spec/plan child. Identifier `B-{n}` (separate counter from `NL-{n}` and `P-{n}`). Listed on `#/project/{id}` after Tickets. Claim and resolve like any ticket. MCP `list_bugs` / `create_bug`.
+**Bug** — a project-level work item (`kind=bug`), not a map/spec/plan child. Identifier `B-{n}` (separate counter from `NL-{n}` and `P-{n}`). Listed on `#/project/{id}` after Tickets. Claim and resolve like any ticket. No blocked-by / blocks UI. MCP `list_bugs` / `create_bug`.
 
 **Stage** — derived from map / spec / plan lifecycle, never persisted: `wayfinding`, `ready_for_spec`, `spec_review`, `ready_for_tickets`, `implementing`, `complete`.
 

@@ -139,7 +139,7 @@ Left nav is **home** and **projects**. A **Project** is the parent of Decision M
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `#/tag/{label}` | Every issue with that tag: maps, specs, tickets. Header search jumps here when the query is an exact catalog tag (`wayfinder:grilling` or `#wayfinder:grilling`) |
 | `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
-| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`). Compose another map or a bug onto this Project |
+| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`, no blockers). Compose a map or a bug from a centered card |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
 | `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
@@ -152,4 +152,4 @@ The header search (`/`) matches identifier, title, body, and labels. An exact ca
 
 ## Keyboard (UI)
 
-`j` / `k` move, `Enter` open, `Esc` back, `r` refresh, `/` focus search.
+`j` / `k` move, `Enter` open, `Esc` close compose or go back, `r` refresh, `/` focus search.

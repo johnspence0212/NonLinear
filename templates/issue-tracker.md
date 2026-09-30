@@ -24,7 +24,7 @@ The UI is `http://localhost:3333`. Issue identity is the numeric `id`. Display n
 - **Comment**: MCP `add_comment` with `id` and markdown `body`. Edit later with `update_comment` (`commentId` + `body`).
 - **Labels**: `list_labels` to see seed + catalog + in-use tags. `create_label` with `label` adds a tag to the catalog (idempotent, strips a leading `#`) so it shows in the UI before any issue uses it. `add_label` with `id` + `label` appends a tag to an issue without replacing existing labels. You can still pass `labels` on `create_issue` / `update_issue`. Canonical triage strings: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`.
 - **Close**: MCP `update_issue` with `state: "closed"`, or `resolve_issue` (comment + close).
-- **Bugs**: project-level todo items with identifiers `B-N`. MCP `create_bug` with `project: "P-8"` and `title` (or `titles` for a list). MCP `list_bugs` with `project: "P-8"`. Claim / resolve with the same tools as any ticket (`claim_issue`, `resolve_issue`, `get_issue` using numeric `id`).
+- **Bugs**: project-level todo items with identifiers `B-N`. MCP `create_bug` with `project: "P-8"` and `title` (or `titles` for a list). MCP `list_bugs` with `project: "P-8"`. Claim / resolve with the same tools as any ticket (`claim_issue`, `resolve_issue`, `get_issue` using numeric `id`). Bugs do not use blocked-by edges in the UI.
 
 ## When a skill says "publish to the issue tracker"
 

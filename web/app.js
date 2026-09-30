@@ -320,14 +320,39 @@ function composeBar(label, formId = "compose", kind = "issue") {
         <label class="edit-label">repo<input name="repo" placeholder="optional folder for cursor" autocomplete="off" /></label>`
       : `<label class="edit-label">title<input name="title" autocomplete="off" /></label>
         <label class="edit-label">body${mdEditorHTML(formId + "-md", "markdown body")}</label>`;
-  return `<div class="compose" data-compose-root="${esc(formId)}">
-    <button type="button" class="banner compose-open" data-compose-open>+ ${esc(label)}</button>
-    <form class="compose-form" id="${esc(formId)}" hidden>
-      <div class="pad">${fields}
-        <div class="actions"><button type="submit">create</button><button type="button" data-compose-cancel>cancel</button></div>
-      </div>
-    </form>
-  </div>`;
+  return `<span class="compose" data-compose-root="${esc(formId)}">
+    <button type="button" class="compose-open" data-compose-open>+ ${esc(label)}</button>
+    <div class="compose-layer" hidden>
+      <button type="button" class="compose-scrim" data-compose-cancel aria-label="close"></button>
+      <form class="compose-card" id="${esc(formId)}" role="dialog" aria-modal="true" aria-label="${esc(label)}">
+        <div class="compose-card-h"><strong>${esc(label)}</strong></div>
+        <div class="compose-card-b">${fields}
+          <div class="actions"><button type="submit">create</button><button type="button" data-compose-cancel>cancel</button></div>
+        </div>
+      </form>
+    </div>
+  </span>`;
+}
+
+function stripComposeLayers() {
+  document.querySelectorAll("body > .compose-layer").forEach((el) => el.remove());
+  document.body.classList.remove("compose-open");
+}
+
+function resetComposeForm(form) {
+  if (!form) return;
+  form.reset();
+  const preview = form.querySelector(".md-preview");
+  if (preview) preview.innerHTML = mdPreviewHTML("");
+}
+
+function closeOpenCompose() {
+  const layer = document.querySelector(".compose-layer:not([hidden])");
+  if (!layer) return false;
+  resetComposeForm(layer.querySelector("form"));
+  layer.hidden = true;
+  document.body.classList.remove("compose-open");
+  return true;
 }
 
 function bindCompose(extra, formId = "compose") {
@@ -335,18 +360,30 @@ function bindCompose(extra, formId = "compose") {
   const form = document.getElementById(formId);
   if (!wrap || !form) return;
   const openBtn = wrap.querySelector("[data-compose-open]");
+  const layer = wrap.querySelector(".compose-layer");
+  if (layer) document.body.appendChild(layer);
   bindMdEditor(form.querySelector(".md-editor"));
   const show = (on) => {
-    openBtn.hidden = on;
-    form.hidden = !on;
+    if (!layer) return;
+    if (on) {
+      document.querySelectorAll("body > .compose-layer").forEach((el) => {
+        if (el !== layer) {
+          resetComposeForm(el.querySelector("form"));
+          el.hidden = true;
+        }
+      });
+    }
+    layer.hidden = !on;
+    document.body.classList.toggle("compose-open", on);
     if (on) form.querySelector("[name=title]")?.focus();
   };
-  openBtn.addEventListener("click", () => show(true));
-  form.querySelector("[data-compose-cancel]")?.addEventListener("click", () => {
-    form.reset();
-    const preview = form.querySelector(".md-preview");
-    if (preview) preview.innerHTML = mdPreviewHTML("");
+  const hide = () => {
+    resetComposeForm(form);
     show(false);
+  };
+  openBtn.addEventListener("click", () => show(true));
+  layer?.querySelectorAll("[data-compose-cancel]").forEach((btn) => {
+    btn.addEventListener("click", hide);
   });
   form.addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -623,9 +660,8 @@ function renderTagList(label) {
   const n = maps.length + extras.length + state.issues.length;
   const mapCompose = label === "wayfinder:map" ? composeBar("new map with this tag") : "";
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-    `<strong>#${esc(label)}</strong><span>${n} match${n === 1 ? "" : "es"}</span><a href="#/" class="muted">clear</a>`,
-    [...maps.map((m) => mapRowHTML(m)), ...extras.map(artifactRowHTML)].join("") || `<div class="empty">no maps or specs with this tag</div>`,
-    mapCompose
+    `<strong>#${esc(label)}</strong><span>${n} match${n === 1 ? "" : "es"}</span><a href="#/" class="muted">clear</a>${mapCompose}`,
+    [...maps.map((m) => mapRowHTML(m)), ...extras.map(artifactRowHTML)].join("") || `<div class="empty">no maps or specs with this tag</div>`
   )}${box(
     `<strong>tickets</strong><span>by map</span>`,
     groupedTicketHTML(groups, true) || `<div class="empty">no tickets with this tag</div>`,
@@ -644,9 +680,8 @@ async function loadTag(label) {
 function renderList() {
   const rows = state.projects.map((p, i) => projectRowHTML(p, i === state.selected, true)).join("");
   main.innerHTML = `${state.error ? `<div class="error">${esc(state.error)}</div>` : ""}${box(
-    `<strong>projects</strong><span>decision map → spec → tickets</span>`,
-    rows || `<div class="empty">no projects — compose one or create a map</div>`,
-    composeBar("new project", "compose", "project")
+    `<strong>projects</strong><span>decision map → spec → tickets</span>${composeBar("new project", "compose", "project")}`,
+    rows || `<div class="empty">no projects — compose one or create a map</div>`
   )}`;
   bindProjectCompose();
   syncChrome();
@@ -1025,9 +1060,8 @@ async function renderMap(id) {
         : ""
     }
     ${box(
-      `<strong>tickets</strong><div class="subnav">${filters}</div>`,
-      rows || `<div class="empty">${empty}</div>`,
-      composeBar("new ticket on this map")
+      `<strong>tickets</strong><div class="subnav">${filters}</div>${composeBar("new ticket on this map")}`,
+      rows || `<div class="empty">${empty}</div>`
     )}`;
   bindCompose({ parentId: map.id });
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(map, btn.dataset.act)));
@@ -1112,9 +1146,8 @@ async function renderProject(id) {
       </div>`
     )}
     ${box(
-      "<strong>decision maps</strong>",
-      (project.maps || []).map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`,
-      composeBar("new map on this project")
+      `<strong>decision maps</strong>${composeBar("new map on this project")}`,
+      (project.maps || []).map((m) => mapRowHTML(m)).join("") || `<div class="empty">no maps</div>`
     )}
     ${box(
       "<strong>spec</strong>",
@@ -1125,9 +1158,8 @@ async function renderProject(id) {
       (project.plans || []).map(artifactRowHTML).join("") || `<div class="empty">none — make tickets from the spec</div>`
     )}
     ${box(
-      "<strong>bugs</strong>",
-      (project.bugs || []).map((b) => ticketHTML(b, false, true)).join("") || `<div class="empty">no bugs</div>`,
-      composeBar("new bug", "compose-bug")
+      `<strong>bugs</strong>${composeBar("new bug", "compose-bug")}`,
+      (project.bugs || []).map((b) => ticketHTML(b, false, true)).join("") || `<div class="empty">no bugs</div>`
     )}`;
   renderRail(
     box(
@@ -1300,10 +1332,8 @@ async function renderPlan(id) {
     )}
     ${relationBox("blocked by", sortRelations(issue.blockers), "not blocked")}
     ${box(
-      `<strong>tickets</strong><span class="mark">${open} open · ${done} done</span><div class="subnav">${filters}</div>`,
-      `<div class="progress"><i style="width:${pct}%"></i></div>` +
-        (rows || `<div class="empty">no tickets</div>`),
-      composeBar("new ticket")
+      `<strong>tickets</strong><span class="mark">${open} open · ${done} done</span><div class="subnav">${filters}</div>${composeBar("new ticket")}`,
+      `<div class="progress"><i style="width:${pct}%"></i></div>` + (rows || `<div class="empty">no tickets</div>`)
     )}`;
   bindCompose({ parentId: issue.id });
   main.querySelectorAll("[data-act]").forEach((btn) => btn.addEventListener("click", () => act(issue, btn.dataset.act)));
@@ -1473,8 +1503,12 @@ async function renderIssue(id) {
         </div>
       </div>`
     )}
-    ${relationBox("blocked by", blockers, "not blocked — frontier when unclaimed")}
-    ${blocks.length ? relationBox("blocks", blocks, "") : ""}
+    ${
+      isBug(issue)
+        ? ""
+        : `${relationBox("blocked by", blockers, "not blocked — frontier when unclaimed")}
+    ${blocks.length ? relationBox("blocks", blocks, "") : ""}`
+    }
     ${box(
       "<strong>comments</strong>",
       `${comments || `<div class="empty">none</div>`}
@@ -1731,6 +1765,7 @@ async function act(issue, kind) {
 }
 
 async function paint() {
+  stripComposeLayers();
   state.viewRepo = "";
   const r = route();
   if (r.name === "settings") showSettingsLoading();
@@ -2002,7 +2037,12 @@ function highlightSelected() {
 
 window.addEventListener("hashchange", paint);
 window.addEventListener("keydown", (e) => {
-  if (e.target.matches("input, textarea")) return;
+  if (e.key === "Escape" && closeOpenCompose()) {
+    e.preventDefault();
+    return;
+  }
+  if (e.target.matches("input, textarea, select")) return;
+  if (document.querySelector(".compose-layer:not([hidden])")) return;
   const r = route();
   if (e.key === "r") {
     e.preventDefault();
