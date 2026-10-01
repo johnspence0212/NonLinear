@@ -282,13 +282,26 @@ function stamp(label, kind = "") {
   return `<span class="stamp ${kind}">${esc(label)}</span>`;
 }
 
+function planLifecycleLabel(life) {
+  switch (life) {
+    case "draft":
+      return "not started";
+    case "active":
+      return "in progress";
+    case "delivered":
+      return "delivered";
+    default:
+      return life || "tickets";
+  }
+}
+
 function statusStamp(issue, lg = "") {
   const size = lg ? ` ${lg}` : "";
   const k = takeability(issue);
   if (k === "closed") return stamp("closed", `closed${size}`);
   if (k === "map") return stamp("map", `open${size}`);
   if (k === "spec") return stamp(issue.lifecycle || "spec", `open${size}`);
-  if (k === "plan") return stamp(issue.lifecycle || "plan", `open${size}`);
+  if (k === "plan") return stamp(planLifecycleLabel(issue.lifecycle), `open${size}`);
   if (k === "blocked") return stamp("blocked", `blocked${size}`);
   if (k === "claimed") return stamp(issue.assignee ? `@${issue.assignee}` : "claimed", `claim${size}`);
   return stamp("frontier", `take${size}`);
@@ -1468,7 +1481,7 @@ async function renderPlan(id) {
     box(
       "<strong>tickets</strong>",
       railLines([
-        ["lifecycle", life],
+        ["status", planLifecycleLabel(life)],
         ["tickets", kids.length],
         ["frontier", kids.filter((c) => c.frontier).length],
         ["from", issue.derivedFrom ? `<a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>` : ""],

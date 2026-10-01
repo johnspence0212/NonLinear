@@ -141,7 +141,7 @@ Left nav is **home** and **projects**. A **Project** is the parent of Decision M
 | `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
 | `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`, no blockers). Compose a map or a bug from a centered card. **Move to** another project lives in the right rail |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
-| `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
+| `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list. Status is **not started** (list exists), **in progress** (`start implementation`), or **delivered** |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |
 
 Click a `#tag` in the right rail, on a row, or on an issue chip to filter (`#/tag/wayfinder:grilling`). Click it again or **clear** to drop the filter. Type that catalog tag in the header search (`/`) to land on the same view. New maps composed on the `#wayfinder:map` tag view get the tag. MCP `create_label` adds a tag to the catalog so it shows in the rail before any issue uses it; `add_label` puts a tag on an issue.
