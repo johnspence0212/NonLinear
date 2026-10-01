@@ -127,7 +127,7 @@ A **Project** (`P-{id}`) is the parent of Decision Maps → Spec → Tickets. Si
 
 `get_project_status` is the big-picture read. In Cursor, “Give me the status of P-8” should call it with `project: "P-8"` (also accepts `id` or `query` / title). It returns `kind: nonlinear.project-status` — derived stage, destination, progress counts, map/spec/plan summaries without bodies, frontier/claimed/blocked tickets, `next`, and `nextAction`. Same JSON is `GET /api/projects/{id}/status` or `GET /api/projects/status?query=P-8`. Use `get_project` when you need full artifact bodies.
 
-`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project view. Export a map from the map view; import a `.nlmap.json` from settings.
+`GET /api/health` returns `{ ok, version, data, issues, workspace }` so a later client can detect an update. The UI footer and **settings** show the same version. The footer also shows the repo in play (a Project's `repo`, or the directory NonLinear was started in). Wipe the database from settings (two clicks). Delete a map from the map view; children go with it. Delete a Project from the project view (two clicks); every issue on it goes with it. Move a Project's issues onto another Project from the project right rail. Edit on a map, spec, tickets list, ticket, or bug picks tags from a catalog dropdown. Export a map from the map view; import a `.nlmap.json` from settings.
 
 ## Views
 
@@ -139,7 +139,7 @@ Left nav is **home** and **projects**. A **Project** is the parent of Decision M
 | `projects` | Every Project (identifier `P-{id}`, derived stage, destination). Compose creates a Project. Open `#/project/{id}` |
 | `#/tag/{label}` | Every issue with that tag: maps, specs, tickets. Header search jumps here when the query is an exact catalog tag (`wayfinder:grilling` or `#wayfinder:grilling`) |
 | `#/search/{q}` | Substring match on identifier, title, body, and labels. Split into maps + tickets-by-map boxes |
-| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`, no blockers). Compose a map or a bug from a centered card |
+| `#/project/{id}` | Project destination, optional repo, derived stage, Decision Maps / Spec / Tickets rows, then **bugs** (`B-N`, no blockers). Compose a map or a bug from a centered card. **Move to** another project lives in the right rail |
 | `#/spec/{id}` | Spec body, approve / to tickets (creates this spec's Tickets list, then `/to-tickets`) |
 | `#/plan/{id}` | Tickets body plus ticket list / compose / blockers. Implementation tickets are children of this list |
 | `settings` | Version, data path, Cursor CLI model dropdown (`agent models`) and the default repo NonLinear was started in, import a map file, wipe the database |

@@ -88,6 +88,105 @@ function tagButtons(labels) {
     .join(" ");
 }
 
+const WAYFINDER_MAP_TAG = "wayfinder:map";
+const WAYFINDER_TICKET_TAGS = ["wayfinder:research", "wayfinder:prototype", "wayfinder:grilling", "wayfinder:task"];
+
+function uniqueLabels(list) {
+  const seen = new Set();
+  const out = [];
+  for (const raw of list || []) {
+    const label = String(raw || "").trim();
+    if (!label || seen.has(label)) continue;
+    seen.add(label);
+    out.push(label);
+  }
+  return out;
+}
+
+function catalogTags() {
+  return uniqueLabels(state.labels);
+}
+
+function availableTagsFor(issue) {
+  const catalog = catalogTags();
+  const current = uniqueLabels(issue && issue.labels);
+  let pool;
+  if (isMap(issue)) {
+    pool = catalog.filter((l) => !WAYFINDER_TICKET_TAGS.includes(l));
+  } else if (isSpec(issue) || isPlan(issue) || isBug(issue)) {
+    pool = catalog.filter((l) => l !== WAYFINDER_MAP_TAG && !WAYFINDER_TICKET_TAGS.includes(l));
+  } else {
+    pool = catalog.filter((l) => l !== WAYFINDER_MAP_TAG);
+  }
+  return uniqueLabels([...pool, ...current]);
+}
+
+function lockedTags(issue) {
+  return isMap(issue) ? [WAYFINDER_MAP_TAG] : [];
+}
+
+function initialPickedTags(issue) {
+  const picked = uniqueLabels(issue && issue.labels);
+  for (const label of lockedTags(issue)) {
+    if (!picked.includes(label)) picked.push(label);
+  }
+  return picked;
+}
+
+function tagPickerHTML(issue) {
+  return `<label class="edit-label">tags
+    <div class="tag-picker" data-tag-picker></div>
+  </label>`;
+}
+
+function tagPickerInnerHTML(issue, picked) {
+  const locked = new Set(lockedTags(issue));
+  const available = availableTagsFor(issue);
+  const pickedSet = new Set(picked);
+  const chips = picked
+    .map((l) => {
+      if (locked.has(l)) return `<span class="tag pinned">#${esc(l)}</span>`;
+      return `<button type="button" class="tag" data-remove-tag="${esc(l)}">#${esc(l)} ×</button>`;
+    })
+    .join("");
+  const remaining = available.filter((l) => !pickedSet.has(l));
+  const opts = remaining.map((l) => `<option value="${esc(l)}">#${esc(l)}</option>`).join("");
+  const prompt = picked.length ? "add tag…" : "choose a tag…";
+  const select = remaining.length
+    ? `<select id="edit-add-tag" aria-label="available tags"><option value="">${esc(prompt)}</option>${opts}</select>`
+    : `<span class="muted">${picked.length ? "all available tags applied" : "no tags in catalog"}</span>`;
+  return `${select}<div class="chips tag-picked">${chips}</div>`;
+}
+
+function bindTagPicker(root, issue) {
+  const picked = initialPickedTags(issue);
+  const paintPicker = () => {
+    root.innerHTML = tagPickerInnerHTML(issue, picked);
+    const select = root.querySelector("#edit-add-tag");
+    if (select) {
+      select.addEventListener("change", () => {
+        const value = select.value;
+        if (!value || picked.includes(value)) return;
+        picked.push(value);
+        paintPicker();
+      });
+    }
+    root.querySelectorAll("[data-remove-tag]").forEach((btn) => {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        const tag = btn.dataset.removeTag;
+        if (lockedTags(issue).includes(tag)) return;
+        const i = picked.indexOf(tag);
+        if (i >= 0) picked.splice(i, 1);
+        paintPicker();
+      });
+    });
+  };
+  paintPicker();
+  return () => picked.slice();
+}
+
 function isMap(issue) {
   return issue.kind === "decision-map" || (issue.labels || []).includes("wayfinder:map");
 }
@@ -1095,6 +1194,48 @@ function projectCrumb(issue) {
   return `<div class="hint"><a href="#/project/${p.id}">${esc(p.identifier)}</a> ${esc(p.title)} · ${esc(p.stage || "")}</div>`;
 }
 
+function otherProjects(id) {
+  return (state.projects || []).filter((p) => p.id !== id);
+}
+
+function projectMoveBox(project) {
+  const others = otherProjects(project.id);
+  if (!others.length) return "";
+  const opts = others
+    .map((p) => `<option value="${p.id}">${esc(p.identifier)} ${esc(p.title)}</option>`)
+    .join("");
+  return box(
+    "<strong>move to</strong>",
+    `<div class="pad">
+      <p class="muted">Send every map, spec, ticket, and bug on this project to another project.</p>
+      <label class="edit-label">destination<select data-move-to>${opts}</select></label>
+      <div class="actions"><button type="button" data-act="move">move all</button></div>
+    </div>`
+  );
+}
+
+function bindProjectMove(project) {
+  const moveBtn = rail.querySelector("[data-act=move]");
+  if (!moveBtn) return;
+  moveBtn.addEventListener("click", async () => {
+    const sel = rail.querySelector("[data-move-to]");
+    const to = Number(sel && sel.value);
+    if (!to) return;
+    try {
+      await api("/api/projects/move", {
+        method: "POST",
+        body: JSON.stringify({ fromProjectId: project.id, projectId: to }),
+      });
+      state.error = "";
+      location.hash = "#/project/" + to;
+      await paint();
+    } catch (err) {
+      state.error = err.message;
+      await renderProject(project.id);
+    }
+  });
+}
+
 function artifactRowHTML(issue) {
   const src = issue.derivedFrom
     ? `from <a href="${hrefFor(issue.derivedFrom)}">${esc(issue.derivedFrom.identifier)}</a>`
@@ -1130,13 +1271,6 @@ async function renderProject(id) {
   setViewRepo(project.repo);
   const dest = project.destination || "";
   const repo = project.repo || "";
-  const others = (state.projects || []).filter((p) => p.id !== project.id);
-  const moveOpts = others
-    .map((p) => `<option value="${p.id}">${esc(p.identifier)} ${esc(p.title)}</option>`)
-    .join("");
-  const move = moveOpts
-    ? `<select data-move-to>${moveOpts}</select><button type="button" data-act="move">move all to…</button>`
-    : "";
   main.innerHTML = `
     ${flash()}
     ${box(
@@ -1145,7 +1279,7 @@ async function renderProject(id) {
         <h1>${esc(project.title)}</h1>
         <div class="body">${dest ? renderMarkdown(dest) : `<span class="muted">no destination</span>`}</div>
         <p class="muted">${repo ? `repo ${esc(repo)}` : "no repo — send to cursor uses the server default"}</p>
-        <div class="actions">${move}<button type="button" data-act="edit">edit</button><button type="button" data-act="delete" class="danger">delete project</button></div>
+        <div class="actions"><button type="button" data-act="edit">edit</button><button type="button" data-act="delete" class="danger">delete project</button></div>
       </div>`
     )}
     ${box(
@@ -1175,7 +1309,7 @@ async function renderProject(id) {
         ["tickets", (project.plans || []).length],
         ["bugs", (project.bugs || []).length],
       ])
-    )
+    ) + projectMoveBox(project)
   );
   const edit = main.querySelector("[data-act=edit]");
   if (edit) {
@@ -1200,26 +1334,7 @@ async function renderProject(id) {
       }
     });
   }
-  const moveBtn = main.querySelector("[data-act=move]");
-  if (moveBtn) {
-    moveBtn.addEventListener("click", async () => {
-      const sel = main.querySelector("[data-move-to]");
-      const to = Number(sel && sel.value);
-      if (!to) return;
-      try {
-        await api("/api/projects/move", {
-          method: "POST",
-          body: JSON.stringify({ fromProjectId: project.id, projectId: to }),
-        });
-        state.error = "";
-        location.hash = "#/project/" + to;
-        await paint();
-      } catch (err) {
-        state.error = err.message;
-        await renderProject(project.id);
-      }
-    });
-  }
+  bindProjectMove(project);
   bindCompose({ labels: ["wayfinder:map"], projectId: project.id });
   bindCompose({ _bug: true, projectId: project.id }, "compose-bug");
   syncChrome();
@@ -1266,6 +1381,7 @@ async function renderSpec(id) {
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(issue.title)}</h1>
+        <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no tags</span>`}</div>
         <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty spec — fill via /to-spec</span>`}</div>
         <div class="actions">${actions}</div>
       </div>`
@@ -1329,6 +1445,7 @@ async function renderPlan(id) {
       `<strong>${esc(issue.identifier)}</strong>${statusStamp(issue, "lg")}`,
       `<div class="box-b pad" id="issue-head">
         <h1>${esc(issue.title)}</h1>
+        <div class="chips">${tagButtons(issue.labels) || `<span class="muted">no tags</span>`}</div>
         <div class="body">${issue.body ? renderMarkdown(issue.body) : `<span class="muted">empty — fill via /to-tickets</span>`}</div>
         <div class="actions">${actions}</div>
       </div>`
@@ -1549,20 +1666,9 @@ async function renderIssue(id) {
   syncChrome();
 }
 
-function formatTags(labels) {
-  return (labels || []).join(" ");
-}
-
-function parseTags(raw) {
-  return String(raw || "")
-    .split(/[,\s]+/)
-    .map((s) => s.replace(/^#+/, "").trim())
-    .filter(Boolean);
-}
-
 function editFormHTML(issue) {
   return `<label class="edit-label">title<input id="edit-title" value="${esc(issue.title).replaceAll('"', "&quot;")}" /></label>
-  <label class="edit-label">tags<input id="edit-labels" value="${esc(formatTags(issue.labels)).replaceAll('"', "&quot;")}" placeholder="space or comma · # optional" /></label>
+  ${tagPickerHTML(issue)}
   <label class="edit-label">body<textarea id="edit-body">${esc(issue.body || "")}</textarea></label>
   <div class="actions"><button data-save>save</button><button data-cancel>cancel</button></div>`;
 }
@@ -1570,11 +1676,13 @@ function editFormHTML(issue) {
 function bindEditForm(issue) {
   const save = main.querySelector("[data-save]");
   const cancel = main.querySelector("[data-cancel]");
+  const picker = main.querySelector("[data-tag-picker]");
+  const getTags = picker ? bindTagPicker(picker, issue) : () => [];
   cancel.addEventListener("click", () => paint());
   save.addEventListener("click", async () => {
     const title = main.querySelector("#edit-title").value.trim();
     const body = main.querySelector("#edit-body").value;
-    const labels = parseTags(main.querySelector("#edit-labels")?.value || "");
+    const labels = getTags();
     if (!title) return;
     try {
       await api(`/api/issues/${issue.id}`, { method: "PATCH", body: JSON.stringify({ title, body, labels }) });
@@ -1585,7 +1693,10 @@ function bindEditForm(issue) {
     }
   });
   main.querySelector("#issue-head").addEventListener("keydown", (e) => {
-    if (e.key === "Escape") paint();
+    if (e.key === "Escape") {
+      if (e.target.matches("select")) return;
+      paint();
+    }
     if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
       e.preventDefault();
       save.click();

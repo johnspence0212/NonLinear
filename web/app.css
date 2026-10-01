@@ -424,6 +424,21 @@ body.compose-open { overflow: hidden; }
 }
 .edit-label input:focus, .edit-label select:focus { outline: none; border-color: var(--accent); }
 .edit-label textarea { min-height: 220px; }
+.tag-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.tag-picker .chips { margin: 0; }
+.tag-picker .tag.pinned {
+  cursor: default;
+  color: var(--muted);
+}
+.tag-picker .tag.pinned:hover { text-decoration: none; border-color: var(--line); color: var(--muted); }
+.tag-picker .tag[data-remove-tag]:hover { color: var(--warn); border-color: var(--warn); text-decoration: none; }
+aside .edit-label { margin-bottom: 8px; }
+aside .edit-label select { width: 100%; max-width: none; }
+aside .actions { margin: 0; }
 h1 { font-size: 16px; font-weight: 600; margin: 0 0 10px; }
 .chips { display: flex; flex-wrap: wrap; gap: 8px; margin: 8px 0; }
 .chip { border: 1px solid var(--line); border-radius: 4px; padding: 2px 8px; color: var(--muted); }
